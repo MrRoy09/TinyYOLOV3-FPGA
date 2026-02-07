@@ -1,0 +1,61 @@
+#-----------------------------------------------------------
+# Vivado v2025.1 (64-bit)
+# SW Build 6140274 on Wed May 21 22:58:25 MDT 2025
+# IP Build 6138677 on Thu May 22 03:10:11 MDT 2025
+# SharedData Build 6139179 on Tue May 20 17:58:58 MDT 2025
+# Start of session at: Sat Feb  7 23:51:09 2026
+# Process ID         : 806865
+# Current directory  : /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex
+# Command line       : vivado -notrace -source /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.gen/sources_1/ip/TinyYOLOHW/TinyYOLOHW_ex.tcl
+# Log file           : /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/vivado.log
+# Journal file       : /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/vivado.jou
+# Running On         : ubuntu-laptop-hp
+# Platform           : Ubuntu
+# Operating System   : Ubuntu 24.04.3 LTS
+# Processor Detail   : 13th Gen Intel(R) Core(TM) i5-1340P
+# CPU Frequency      : 2772.720 MHz
+# CPU Physical cores : 12
+# CPU Logical cores  : 16
+# Host memory        : 16391 MB
+# Swap memory        : 4294 MB
+# Total Virtual      : 20686 MB
+# Available Virtual  : 7469 MB
+#-----------------------------------------------------------
+start_gui
+source /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.gen/sources_1/ip/TinyYOLOHW/TinyYOLOHW_ex.tcl -notrace
+update_compile_order -fileset sources_1
+update_compile_order -fileset sources_1
+add_files -scan_for_includes {/media/ubuntu/T7/projects/arm-bharat/hdl/kernel_window.sv /media/ubuntu/T7/projects/arm-bharat/hdl/pixel_serializer.sv /media/ubuntu/T7/projects/arm-bharat/hdl/lib/line_buffer.sv /media/ubuntu/T7/projects/arm-bharat/hdl/quantizer.sv /media/ubuntu/T7/projects/arm-bharat/hdl/compute_kernel_top.sv /media/ubuntu/T7/projects/arm-bharat/hdl/output_packer.sv /media/ubuntu/T7/projects/arm-bharat/hdl/lib/dsp_wrap_int8.sv /media/ubuntu/T7/projects/arm-bharat/hdl/partial_sum_accumalator.sv /media/ubuntu/T7/projects/arm-bharat/hdl/conv_3x3.sv /media/ubuntu/T7/projects/arm-bharat/hdl/parameter_loader.sv}
+update_compile_order -fileset sources_1
+add_files -scan_for_includes /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci
+add_files -scan_for_includes {/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/TinyYOLOHW/TinyYOLOHW.xci /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_weights_1/bram_weights_1.xci /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci}
+update_compile_order -fileset sources_1
+launch_runs synth_1 -jobs 8
+wait_on_run synth_1
+reset_run synth_1
+launch_runs synth_1 -jobs 8
+wait_on_run synth_1
+synth_design -rtl -rtl_skip_mlo -name rtl_1
+refresh_design
+close_design
+reset_run synth_1
+launch_runs synth_1 -jobs 8
+wait_on_run synth_1
+set_property generate_synth_checkpoint false [get_files  /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_weights_1/bram_weights_1.xci]
+generate_target all [get_files  /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_weights_1/bram_weights_1.xci]
+export_ip_user_files -of_objects [get_files /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_weights_1/bram_weights_1.xci] -no_script -sync -force -quiet
+export_simulation -lib_map_path [list {modelsim=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/modelsim} {questa=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/questa} {xcelium=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/xcelium} {vcs=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/vcs} {riviera=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/riviera}] -of_objects [get_files /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_weights_1/bram_weights_1.xci] -directory /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.ip_user_files/sim_scripts -ip_user_files_dir /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.ip_user_files -ipstatic_source_dir /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.ip_user_files/ipstatic -use_ip_compiled_libs -force -quiet
+set_property generate_synth_checkpoint false [get_files  /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci]
+generate_target all [get_files  /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci]
+export_ip_user_files -of_objects [get_files /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci] -no_script -sync -force -quiet
+export_simulation -lib_map_path [list {modelsim=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/modelsim} {questa=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/questa} {xcelium=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/xcelium} {vcs=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/vcs} {riviera=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/riviera}] -of_objects [get_files /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci] -directory /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.ip_user_files/sim_scripts -ip_user_files_dir /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.ip_user_files -ipstatic_source_dir /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.ip_user_files/ipstatic -use_ip_compiled_libs -force -quiet
+reset_run synth_1
+launch_runs synth_1 -jobs 8
+wait_on_run synth_1
+set_property generate_synth_checkpoint false [get_files  /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci]
+generate_target all [get_files  /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci]
+export_ip_user_files -of_objects [get_files /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci] -no_script -sync -force -quiet
+export_simulation -lib_map_path [list {modelsim=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/modelsim} {questa=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/questa} {xcelium=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/xcelium} {vcs=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/vcs} {riviera=/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.cache/compile_simlib/riviera}] -of_objects [get_files /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci] -directory /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.ip_user_files/sim_scripts -ip_user_files_dir /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.ip_user_files -ipstatic_source_dir /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.ip_user_files/ipstatic -use_ip_compiled_libs -force -quiet
+reset_run synth_1
+launch_runs synth_1 -jobs 8
+wait_on_run synth_1

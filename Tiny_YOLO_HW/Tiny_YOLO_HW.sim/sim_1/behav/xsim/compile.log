@@ -1,0 +1,14 @@
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/media/ubuntu/T7/projects/arm-bharat/hdl/conv_3x3.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module conv_3x3
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/media/ubuntu/T7/projects/arm-bharat/hdl/lib/dsp_wrap_int8.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module dsp_wrap_int8
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/media/ubuntu/T7/projects/arm-bharat/hdl/kernel_window.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module kernelWindow
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/media/ubuntu/T7/projects/arm-bharat/hdl/lib/line_buffer.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module lineBuffer
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/media/ubuntu/T7/projects/arm-bharat/sim/tb_conv_3x3.sv" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module tb_conv_3x3
+INFO: [VRFC 10-2263] Analyzing Verilog file "/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.sim/sim_1/behav/xsim/glbl.v" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module glbl
+INFO: [VRFC 10-163] Analyzing VHDL file "/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.gen/sources_1/ip/mult_gen_0/sim/mult_gen_0.vhd" into library xil_defaultlib
+INFO: [VRFC 10-3107] analyzing entity 'mult_gen_0'

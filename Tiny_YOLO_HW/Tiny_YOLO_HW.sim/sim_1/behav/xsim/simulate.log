@@ -1,0 +1,11 @@
+Time resolution is 1 ps
+Time=0 | ValidOut=x | ConvOut=         x
+Time=1000 | ValidOut=0 | ConvOut=         x
+Time=7000 | ValidOut=0 | ConvOut=         0
+Time=35000 | ValidOut=0 | ConvOut=         5
+Time=47000 | ValidOut=0 | ConvOut=         x
+Time=93000 | ValidOut=0 | ConvOut=        14
+Time=95000 | ValidOut=1 | ConvOut=        14
+Time=129000 | ValidOut=0 | ConvOut=        14
+Simulation Finished.
+$finish called at time : 211 ns : File "/media/ubuntu/T7/projects/arm-bharat/sim/tb_conv_3x3.sv" Line 91

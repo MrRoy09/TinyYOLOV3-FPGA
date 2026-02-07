@@ -1,0 +1,20 @@
+{
+  "0": {
+    "basicblocks": 7,
+    "calls": "",
+    "control_depth": 2,
+    "def_use_depth": 53,
+    "file": "TinyYOLOHW_cmodel.cpp",
+    "fileloc": 109,
+    "instructions": 142,
+    "loads": {
+      "L": 3
+    },
+    "memory_accesses": 9,
+    "name": "TinyYOLOHW",
+    "stores": {
+      "L": 4
+    },
+    "total_instructions": 164
+  }
+}

@@ -1,0 +1,24 @@
+#-----------------------------------------------------------
+# Vivado v2025.1 (64-bit)
+# SW Build 6140274 on Wed May 21 22:58:25 MDT 2025
+# IP Build 6138677 on Thu May 22 03:10:11 MDT 2025
+# SharedData Build 6139179 on Tue May 20 17:58:58 MDT 2025
+# Start of session at: Sat Feb  7 23:50:11 2026
+# Process ID         : 805687
+# Current directory  : /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.runs/TinyYOLOHW_synth_1
+# Command line       : vivado -log TinyYOLOHW.vds -product Vivado -mode batch -messageDb vivado.pb -notrace -source TinyYOLOHW.tcl
+# Log file           : /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.runs/TinyYOLOHW_synth_1/TinyYOLOHW.vds
+# Journal file       : /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.runs/TinyYOLOHW_synth_1/vivado.jou
+# Running On         : ubuntu-laptop-hp
+# Platform           : Ubuntu
+# Operating System   : Ubuntu 24.04.3 LTS
+# Processor Detail   : 13th Gen Intel(R) Core(TM) i5-1340P
+# CPU Frequency      : 1426.261 MHz
+# CPU Physical cores : 12
+# CPU Logical cores  : 16
+# Host memory        : 16391 MB
+# Swap memory        : 4294 MB
+# Total Virtual      : 20686 MB
+# Available Virtual  : 7292 MB
+#-----------------------------------------------------------
+source TinyYOLOHW.tcl -notrace

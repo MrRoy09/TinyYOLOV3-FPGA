@@ -1,0 +1,3 @@
+control_TinyYOLOHW_vip_pkg.sv,systemverilog,xil_defaultlib,../../../../TinyYOLOHW_ex.gen/sources_1/ip/control_TinyYOLOHW_vip/sim/control_TinyYOLOHW_vip_pkg.sv,incdir="../../../ipstatic/hdl"incdir="../../../../../../../Xilinx-tools/2025.1/data/rsb/busdef"incdir="../../../ipstatic/hdl"
+control_TinyYOLOHW_vip.sv,systemverilog,xil_defaultlib,../../../../TinyYOLOHW_ex.gen/sources_1/ip/control_TinyYOLOHW_vip/sim/control_TinyYOLOHW_vip.sv,incdir="../../../ipstatic/hdl"incdir="../../../../../../../Xilinx-tools/2025.1/data/rsb/busdef"incdir="../../../ipstatic/hdl"
+glbl.v,Verilog,xil_defaultlib,glbl.v

@@ -1,0 +1,40 @@
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/run_hls.tcl:9:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=top_XLX_SEP_ PragmaContext=directive_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=name=TinyYOLOHW_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLSDIRECTIVE TOP name=TinyYOLOHW
+        ^
+../TinyYOLOHW_cmodel.cpp:123:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=interface_XLX_SEP_ PragmaContext=_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=s_axilite port=img_width bundle=control_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLS INTERFACE s_axilite port=img_width bundle=control
+        ^
+../TinyYOLOHW_cmodel.cpp:124:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=interface_XLX_SEP_ PragmaContext=_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=s_axilite port=in_channels bundle=control_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLS INTERFACE s_axilite port=in_channels bundle=control
+        ^
+../TinyYOLOHW_cmodel.cpp:125:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=interface_XLX_SEP_ PragmaContext=_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=s_axilite port=out_channels bundle=control_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLS INTERFACE s_axilite port=out_channels bundle=control
+        ^
+../TinyYOLOHW_cmodel.cpp:126:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=interface_XLX_SEP_ PragmaContext=_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=s_axilite port=quant_M bundle=control_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLS INTERFACE s_axilite port=quant_M bundle=control
+        ^
+../TinyYOLOHW_cmodel.cpp:127:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=interface_XLX_SEP_ PragmaContext=_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=s_axilite port=quant_n bundle=control_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLS INTERFACE s_axilite port=quant_n bundle=control
+        ^
+../TinyYOLOHW_cmodel.cpp:128:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=interface_XLX_SEP_ PragmaContext=_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=s_axilite port=isMaxpool bundle=control_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLS INTERFACE s_axilite port=isMaxpool bundle=control
+        ^
+../TinyYOLOHW_cmodel.cpp:129:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=interface_XLX_SEP_ PragmaContext=_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=s_axilite port=is_1x1 bundle=control_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLS INTERFACE s_axilite port=is_1x1 bundle=control
+        ^
+../TinyYOLOHW_cmodel.cpp:130:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=interface_XLX_SEP_ PragmaContext=_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=s_axilite port=stride bundle=control_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLS INTERFACE s_axilite port=stride bundle=control
+        ^
+../TinyYOLOHW_cmodel.cpp:131:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=interface_XLX_SEP_ PragmaContext=_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=s_axilite port=return bundle=control_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLS INTERFACE s_axilite port=return bundle=control
+        ^
+../TinyYOLOHW_cmodel.cpp:132:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=interface_XLX_SEP_ PragmaContext=_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=ap_ctrl_hs port=return_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLS INTERFACE ap_ctrl_hs port=return
+        ^
+../TinyYOLOHW_cmodel.cpp:133:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=interface_XLX_SEP_ PragmaContext=_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=axis port=axi_in_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLS INTERFACE axis port=axi_in
+        ^
+../TinyYOLOHW_cmodel.cpp:134:9: warning: HLS pragma dump _XLX_SEP_ PragmaIsValid=1_XLX_SEP_ PragmaType=interface_XLX_SEP_ PragmaContext=_XLX_SEP_ PragmaFunction=TinyYOLOHW_XLX_SEP_ PragmaOptions=axis port=axi_out_XLX_SEP_ [-Wdump-hls-pragmas]
+#pragma HLS INTERFACE axis port=axi_out
+        ^
+13 warnings generated.

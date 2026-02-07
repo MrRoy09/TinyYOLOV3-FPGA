@@ -1,0 +1,83 @@
+{
+  "0": {
+    "basicblocks": 1,
+    "calls": "4",
+    "control_depth": 0,
+    "def_use_depth": 0,
+    "file": "TinyYOLOHW_cmodel.cpp",
+    "fileloc": 109,
+    "instructions": 14,
+    "memory_accesses": 0,
+    "name": "TinyYOLOHW",
+    "total_instructions": 151
+  },
+  "1": {
+    "basicblocks": 3,
+    "calls": "",
+    "control_depth": 0,
+    "def_use_depth": 4,
+    "file": "TinyYOLOHW_cmodel.cpp",
+    "fileloc": 50,
+    "instructions": 43,
+    "loads": {
+      "L": 3
+    },
+    "memory_accesses": 4,
+    "name": "write_stream<512, 512, 0, 0, 0>",
+    "stores": {
+      "L": 3
+    },
+    "total_instructions": 43
+  },
+  "2": {
+    "basicblocks": 3,
+    "calls": "",
+    "control_depth": 0,
+    "def_use_depth": 3,
+    "file": "TinyYOLOHW_cmodel.cpp",
+    "fileloc": 79,
+    "instructions": 12,
+    "loads": {
+      "L": 1
+    },
+    "memory_accesses": 0,
+    "name": "parallel_adder<512, 0, 0, 0>",
+    "stores": {
+      "L": 1
+    },
+    "total_instructions": 12
+  },
+  "3": {
+    "basicblocks": 4,
+    "calls": "",
+    "control_depth": 0,
+    "def_use_depth": 2,
+    "file": "TinyYOLOHW_cmodel.cpp",
+    "fileloc": 28,
+    "instructions": 46,
+    "loads": {
+      "L": 4
+    },
+    "memory_accesses": 0,
+    "name": "read_stream<512, 512, 0, 0, 0>",
+    "stores": {
+      "L": 7
+    },
+    "total_instructions": 46
+  },
+  "4": {
+    "basicblocks": 4,
+    "calls": "3 2 1",
+    "control_depth": 0,
+    "def_use_depth": 2,
+    "file": "TinyYOLOHW_cmodel.cpp",
+    "fileloc": 88,
+    "instructions": 36,
+    "loads": {
+      "L": 1
+    },
+    "memory_accesses": 0,
+    "name": "example_stream_plus1<512, 512, 0, 0, 0>",
+    "total_instructions": 137
+  }
+}

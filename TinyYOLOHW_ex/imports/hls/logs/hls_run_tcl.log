@@ -1,0 +1,107 @@
+  **** HLS Build v2025.1 6135595
+Sourcing Tcl script '/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/./run_hls.tcl'
+INFO: [HLS 200-1510] Running: open_project prj 
+WARNING: [HLS 200-2182] The 'prj' project will not automatically appear within Vitis IDE workspaces and is meant only for TCL batch use.  Please use open_component instead of open_project/open_solution to generate Vitis IDE compatible component files and directory structure.
+Resolution: For help on HLS 200-2182 see docs.xilinx.com/access/sources/dita/topic?Doc_Version=2025.1%20English&url=ug1448-hls-guidance&resourceid=200-2182.html
+INFO: [HLS 200-10] Creating and opening solution '/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj'.
+INFO: [HLS 200-1510] Running: open_solution sol -flow_target vitis 
+INFO: [HLS 200-10] Creating and opening solution '/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol'.
+INFO: [HLS 200-1505] Using flow_target 'vitis'
+Resolution: For help on HLS 200-1505 see docs.xilinx.com/access/sources/dita/topic?Doc_Version=2025.1%20English&url=ug1448-hls-guidance&resourceid=200-1505.html
+INFO: [HLS 200-435] Setting 'open_solution -flow_target vitis' configuration: config_interface -m_axi_latency=64
+INFO: [HLS 200-435] Setting 'open_solution -flow_target vitis' configuration: config_interface -m_axi_alignment_byte_size=64
+INFO: [HLS 200-435] Setting 'open_solution -flow_target vitis' configuration: config_interface -m_axi_max_widen_bitwidth=512
+INFO: [HLS 200-435] Setting 'open_solution -flow_target vitis' configuration: config_rtl -register_reset_num=3
+INFO: [HLS 200-1510] Running: set_part xck26-sfvc784-2LV-c 
+INFO: [HLS 200-1611] Setting target device to 'xck26-sfvc784-2LV-c'
+INFO: [HLS 200-1510] Running: add_files ../TinyYOLOHW_cmodel.cpp 
+INFO: [HLS 200-10] Adding design file '../TinyYOLOHW_cmodel.cpp' to the project
+INFO: [HLS 200-1510] Running: set_top TinyYOLOHW 
+INFO: [HLS 200-1510] Running: csynth_design 
+INFO: [HLS 200-111] Finished File checks and directory preparation: CPU user time: 0.26 seconds. CPU system time: 0.04 seconds. Elapsed time: 0.34 seconds; current allocated memory: 255.180 MB.
+INFO: [HLS 200-10] Analyzing design file '../TinyYOLOHW_cmodel.cpp' ... 
+INFO: [HLS 200-111] Finished Source Code Analysis and Preprocessing: CPU user time: 1.62 seconds. CPU system time: 0.31 seconds. Elapsed time: 1.93 seconds; current allocated memory: 257.211 MB.
+INFO: [HLS 200-777] Using interface defaults for 'Vitis' flow target.
+INFO: [HLS 200-1995] There were 823 instructions in the design after the 'Compile/Link' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 206 instructions in the design after the 'Unroll/Inline (step 1)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 151 instructions in the design after the 'Unroll/Inline (step 2)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 137 instructions in the design after the 'Unroll/Inline (step 3)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 102 instructions in the design after the 'Unroll/Inline (step 4)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 102 instructions in the design after the 'Array/Struct (step 1)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 102 instructions in the design after the 'Array/Struct (step 2)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 102 instructions in the design after the 'Array/Struct (step 3)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 102 instructions in the design after the 'Array/Struct (step 4)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 177 instructions in the design after the 'Array/Struct (step 5)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 178 instructions in the design after the 'Performance (step 1)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 209 instructions in the design after the 'Performance (step 2)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 164 instructions in the design after the 'Performance (step 3)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 161 instructions in the design after the 'Performance (step 4)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 141 instructions in the design after the 'HW Transforms (step 1)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 200-1995] There were 114 instructions in the design after the 'HW Transforms (step 2)' phase of compilation. See the Design Size Report for more details (/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/syn/report/csynth_design_size.rpt:2)
+INFO: [HLS 214-178] Inlining function 'void read_stream<512, 512, 0, 0, 0>(hls::stream<hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>, 0>&, hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>&)' into 'void example_stream_plus1<512, 512, 0, 0, 0>(hls::stream<hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>, 0>&, hls::stream<hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>, 0>&, unsigned int)' (../TinyYOLOHW_cmodel.cpp:92:0)
+INFO: [HLS 214-178] Inlining function 'void parallel_adder<512, 0, 0, 0>(hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>&, unsigned int)' into 'void example_stream_plus1<512, 512, 0, 0, 0>(hls::stream<hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>, 0>&, hls::stream<hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>, 0>&, unsigned int)' (../TinyYOLOHW_cmodel.cpp:92:0)
+INFO: [HLS 214-178] Inlining function 'void write_stream<512, 512, 0, 0, 0>(hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>&, hls::stream<hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>, 0>&)' into 'void example_stream_plus1<512, 512, 0, 0, 0>(hls::stream<hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>, 0>&, hls::stream<hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>, 0>&, unsigned int)' (../TinyYOLOHW_cmodel.cpp:92:0)
+INFO: [HLS 214-178] Inlining function 'void example_stream_plus1<512, 512, 0, 0, 0>(hls::stream<hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>, 0>&, hls::stream<hls::axis<ap_uint<512>, 0, 0, 0, (unsigned char)56, false>, 0>&, unsigned int)' into 'TinyYOLOHW' (../TinyYOLOHW_cmodel.cpp:120:0)
+INFO: [HLS 214-376] automatically set the pipeline for Loop< VITIS_LOOP_96_1> at ../TinyYOLOHW_cmodel.cpp:96:21 
+INFO: [HLS 214-291] Loop 'VITIS_LOOP_81_1' is marked as complete unroll implied by the pipeline pragma (../TinyYOLOHW_cmodel.cpp:81:21)
+INFO: [HLS 214-186] Unrolling loop 'VITIS_LOOP_81_1' (../TinyYOLOHW_cmodel.cpp:81:21) in function 'TinyYOLOHW' completely with a factor of 16 (../TinyYOLOHW_cmodel.cpp:120:0)
+INFO: [HLS 200-111] Finished Compiling Optimization and Transform: CPU user time: 1.48 seconds. CPU system time: 0.26 seconds. Elapsed time: 6.49 seconds; current allocated memory: 267.148 MB.
+INFO: [HLS 200-111] Finished Checking Pragmas: CPU user time: 0 seconds. CPU system time: 0 seconds. Elapsed time: 0 seconds; current allocated memory: 267.148 MB.
+INFO: [HLS 200-10] Starting code transformations ...
+INFO: [HLS 200-111] Finished Standard Transforms: CPU user time: 0.01 seconds. CPU system time: 0 seconds. Elapsed time: 0.01 seconds; current allocated memory: 267.332 MB.
+INFO: [HLS 200-10] Checking synthesizability ...
+INFO: [HLS 200-111] Finished Checking Synthesizability: CPU user time: 0 seconds. CPU system time: 0 seconds. Elapsed time: 0.01 seconds; current allocated memory: 267.332 MB.
+INFO: [HLS 200-111] Finished Loop, function and other optimizations: CPU user time: 0.02 seconds. CPU system time: 0.01 seconds. Elapsed time: 0.02 seconds; current allocated memory: 288.535 MB.
+INFO: [HLS 200-111] Finished Architecture Synthesis: CPU user time: 0.02 seconds. CPU system time: 0 seconds. Elapsed time: 0.02 seconds; current allocated memory: 288.535 MB.
+INFO: [HLS 200-10] Starting hardware synthesis ...
+INFO: [HLS 200-10] Synthesizing 'TinyYOLOHW' ...
+INFO: [SYN 201-201] Setting up clock 'default' with a period of 10ns.
+INFO: [HLS 200-10] ----------------------------------------------------------------
+INFO: [HLS 200-42] -- Implementing module 'TinyYOLOHW' 
+INFO: [HLS 200-10] ----------------------------------------------------------------
+INFO: [SCHED 204-11] Starting scheduling ...
+INFO: [SCHED 204-61] Pipelining loop 'VITIS_LOOP_96_1'.
+INFO: [HLS 200-1470] Pipelining result : Target II = NA, Final II = 1, Depth = 2, loop 'VITIS_LOOP_96_1'
+INFO: [SCHED 204-11] Finished scheduling.
+INFO: [HLS 200-111] Finished Scheduling: CPU user time: 0.02 seconds. CPU system time: 0.01 seconds. Elapsed time: 0.04 seconds; current allocated memory: 288.535 MB.
+INFO: [BIND 205-100] Starting micro-architecture generation ...
+INFO: [BIND 205-101] Performing variable lifetime analysis.
+INFO: [BIND 205-101] Exploring resource sharing.
+INFO: [BIND 205-101] Binding ...
+INFO: [BIND 205-100] Finished micro-architecture generation.
+INFO: [HLS 200-111] Finished Binding: CPU user time: 0.01 seconds. CPU system time: 0 seconds. Elapsed time: 0.01 seconds; current allocated memory: 288.535 MB.
+INFO: [HLS 200-10] ----------------------------------------------------------------
+INFO: [HLS 200-10] -- Generating RTL for module 'TinyYOLOHW' 
+INFO: [HLS 200-10] ----------------------------------------------------------------
+WARNING: [RTGEN 206-101] Design contains AXI ports. Reset is fixed to synchronous and active low.
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/img_width' to 's_axilite & ap_none'.
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/in_channels' to 's_axilite & ap_none'.
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/out_channels' to 's_axilite & ap_none'.
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/quant_M' to 's_axilite & ap_none'.
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/quant_n' to 's_axilite & ap_none'.
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/isMaxpool' to 's_axilite & ap_none'.
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/is_1x1' to 's_axilite & ap_none'.
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/stride' to 's_axilite & ap_none'.
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/axi_in_V_data_V' to 'axis' (register, both mode).
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/axi_in_V_keep_V' to 'axis' (register, both mode).
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/axi_in_V_strb_V' to 'axis' (register, both mode).
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/axi_in_V_last_V' to 'axis' (register, both mode).
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/axi_out_V_data_V' to 'axis' (register, both mode).
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/axi_out_V_keep_V' to 'axis' (register, both mode).
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/axi_out_V_strb_V' to 'axis' (register, both mode).
+INFO: [RTGEN 206-500] Setting interface mode on port 'TinyYOLOHW/axi_out_V_last_V' to 'axis' (register, both mode).
+INFO: [RTGEN 206-500] Setting interface mode on function 'TinyYOLOHW' to 's_axilite & ap_ctrl_hs'.
+INFO: [HLS 200-1030] Apply Unified Pipeline Control on module 'TinyYOLOHW' pipeline 'VITIS_LOOP_96_1' pipeline type 'loop pipeline'
+INFO: [RTGEN 206-100] Bundling port 'img_width', 'in_channels', 'out_channels', 'quant_M', 'quant_n', 'isMaxpool', 'is_1x1', 'stride' to AXI-Lite port control.
+INFO: [RTGEN 206-100] Finished creating RTL model for 'TinyYOLOHW'.
+INFO: [HLS 200-111] Finished Creating RTL model: CPU user time: 0.01 seconds. CPU system time: 0 seconds. Elapsed time: 0.02 seconds; current allocated memory: 288.535 MB.
+INFO: [HLS 200-111] Finished Generating all RTL models: CPU user time: 0.13 seconds. CPU system time: 0.01 seconds. Elapsed time: 0.14 seconds; current allocated memory: 288.535 MB.
+INFO: [HLS 200-111] Finished Updating report files: CPU user time: 0.26 seconds. CPU system time: 0.02 seconds. Elapsed time: 0.28 seconds; current allocated memory: 288.535 MB.
+INFO: [VHDL 208-304] Generating VHDL RTL for TinyYOLOHW.
+INFO: [VLOG 209-307] Generating Verilog RTL for TinyYOLOHW.
+INFO: [HLS 200-790] **** Loop Constraint Status: All loop constraints were satisfied.
+INFO: [HLS 200-789] **** Estimated Fmax: 521.38 MHz
+INFO: [HLS 200-2161] Finished Command csynth_design Elapsed time: 00:00:09; Allocated memory: 33.355 MB.
+INFO: [HLS 200-112] Total CPU user time: 4.74 seconds. Total CPU system time: 0.96 seconds. Total elapsed time: 11.34 seconds; peak allocated memory: 288.535 MB.
+INFO: [vitis-run 60-791] Total elapsed time: 0h 0m 12s
+INFO: [vitis-run 60-1662] Stopping dispatch session having empty uuid.

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root versionMajor="1" versionMinor="6">
+  <kernel name="TinyYOLOHW" language="ip_c" vlnv="mycompany.com:kernel:TinyYOLOHW:1.0" attributes="" preferredWorkGroupSizeMultiple="0" workGroupSize="1" interrupt="true" hwControlProtocol="ap_ctrl_hs">
+    <ports>
+      <port name="s_axi_control" mode="slave" range="0x1000" dataWidth="32" portType="addressable" base="0x0"/>
+      <port name="axi_in" mode="read_only" dataWidth="512" portType="stream"/>
+      <port name="axi_out" mode="write_only" dataWidth="512" portType="stream"/>
+    </ports>
+    <args>
+      <arg name="img_width" addressQualifier="0" id="0" port="s_axi_control" size="0x4" offset="0x010" type="uint" hostOffset="0x0" hostSize="0x4"/> 
+      <arg name="in_channels" addressQualifier="0" id="1" port="s_axi_control" size="0x4" offset="0x018" type="uint" hostOffset="0x0" hostSize="0x4"/> 
+      <arg name="out_channels" addressQualifier="0" id="2" port="s_axi_control" size="0x4" offset="0x020" type="uint" hostOffset="0x0" hostSize="0x4"/> 
+      <arg name="quant_M" addressQualifier="0" id="3" port="s_axi_control" size="0x4" offset="0x028" type="uint" hostOffset="0x0" hostSize="0x4"/> 
+      <arg name="quant_n" addressQualifier="0" id="4" port="s_axi_control" size="0x4" offset="0x030" type="uint" hostOffset="0x0" hostSize="0x4"/> 
+      <arg name="isMaxpool" addressQualifier="0" id="5" port="s_axi_control" size="0x4" offset="0x038" type="bool" hostOffset="0x0" hostSize="0x1"/> 
+      <arg name="is_1x1" addressQualifier="0" id="6" port="s_axi_control" size="0x4" offset="0x040" type="bool" hostOffset="0x0" hostSize="0x1"/> 
+      <arg name="stride" addressQualifier="0" id="7" port="s_axi_control" size="0x4" offset="0x048" type="uint" hostOffset="0x0" hostSize="0x4"/> 
+      <arg name="axi_in" addressQualifier="4" id="8" port="axi_in" size="0x4" offset="0x050" hostOffset="0x0" hostSize="0x4" type="stream&lt;ap_axiu&lt;512,0,0,0>>&amp;" />
+      <arg name="axi_out" addressQualifier="4" id="9" port="axi_out" size="0x4" offset="0x058" hostOffset="0x0" hostSize="0x4" type="stream&lt;ap_axiu&lt;512,0,0,0>>&amp;" />
+    </args>
+  </kernel>
+</root>
+

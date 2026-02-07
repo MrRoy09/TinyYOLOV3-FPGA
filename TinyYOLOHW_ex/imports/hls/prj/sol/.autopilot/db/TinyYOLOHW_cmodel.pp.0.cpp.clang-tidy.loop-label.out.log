@@ -1,0 +1,40 @@
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:2736:5: warning: Added loop label VITIS_LOOP_676_1:   [xilinx-label-all-loops]
+    for (unsigned i = low; i != high+1; ++i) {
+    ^~~
+    VITIS_LOOP_676_1: 
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:2736:5: note: FIX-IT applied suggested code changes
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:2750:5: warning: Added loop label VITIS_LOOP_690_1:   [xilinx-label-all-loops]
+    for (unsigned i = low; i != high+1; ++i) {
+    ^~~
+    VITIS_LOOP_690_1: 
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:2750:5: note: FIX-IT applied suggested code changes
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:2764:5: warning: Added loop label VITIS_LOOP_704_1:   [xilinx-label-all-loops]
+    for (unsigned i = low; i != high+1; ++i) {
+    ^~~
+    VITIS_LOOP_704_1: 
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:2764:5: note: FIX-IT applied suggested code changes
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:4732:7: warning: Added loop label VITIS_LOOP_1248_1:   [xilinx-label-all-loops]
+      for (i = 0; i < __N - 1; ++i) {
+      ^~~
+      VITIS_LOOP_1248_1: 
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:4732:7: note: FIX-IT applied suggested code changes
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:9969:4: warning: Added loop label VITIS_LOOP_35_1:   [xilinx-label-all-loops]
+   for (unsigned int i = 0; i < ACC_BITS; i += INPUT_BITS) {
+   ^~~
+   VITIS_LOOP_35_1: 
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:9969:4: note: FIX-IT applied suggested code changes
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:9988:5: warning: Added loop label VITIS_LOOP_54_1:   [xilinx-label-all-loops]
+    for (unsigned int i=0; i < ACC_BITS; i+= OUTPUT_BITS) {
+    ^~~
+    VITIS_LOOP_54_1: 
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:9988:5: note: FIX-IT applied suggested code changes
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:10015:4: warning: Added loop label VITIS_LOOP_81_1:   [xilinx-label-all-loops]
+   for (unsigned int i=0; i < ACC_BITS; i+= adder_width) {
+   ^~~
+   VITIS_LOOP_81_1: 
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:10015:4: note: FIX-IT applied suggested code changes
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:10030:4: warning: Added loop label VITIS_LOOP_96_1:   [xilinx-label-all-loops]
+   while (!done) {
+   ^~~~~
+   VITIS_LOOP_96_1: 
+/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp:10030:4: note: FIX-IT applied suggested code changes

@@ -1,0 +1,76 @@
+---
+MainSourceFile:  /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp
+Diagnostics:     
+  - DiagnosticName:  xilinx-label-all-loops
+    Message:         'Added loop label VITIS_LOOP_676_1:  '
+    FileOffset:      676
+    FilePath:        /media/ubuntu/T7/Xilinx-tools/2025.1/Vitis/common/technology/autopilot/etc/ap_int_ref.h
+    Replacements:    
+      - FilePath:        /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp
+        Offset:          296344
+        Length:          0
+        ReplacementText: 'VITIS_LOOP_676_1: '
+  - DiagnosticName:  xilinx-label-all-loops
+    Message:         'Added loop label VITIS_LOOP_690_1:  '
+    FileOffset:      690
+    FilePath:        /media/ubuntu/T7/Xilinx-tools/2025.1/Vitis/common/technology/autopilot/etc/ap_int_ref.h
+    Replacements:    
+      - FilePath:        /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp
+        Offset:          296810
+        Length:          0
+        ReplacementText: 'VITIS_LOOP_690_1: '
+  - DiagnosticName:  xilinx-label-all-loops
+    Message:         'Added loop label VITIS_LOOP_704_1:  '
+    FileOffset:      704
+    FilePath:        /media/ubuntu/T7/Xilinx-tools/2025.1/Vitis/common/technology/autopilot/etc/ap_int_ref.h
+    Replacements:    
+      - FilePath:        /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp
+        Offset:          297277
+        Length:          0
+        ReplacementText: 'VITIS_LOOP_704_1: '
+  - DiagnosticName:  xilinx-label-all-loops
+    Message:         'Added loop label VITIS_LOOP_1248_1:  '
+    FileOffset:      1248
+    FilePath:        /media/ubuntu/T7/Xilinx-tools/2025.1/Vitis/common/technology/autopilot/etc/ap_fixed_base.h
+    Replacements:    
+      - FilePath:        /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp
+        Offset:          592431
+        Length:          0
+        ReplacementText: 'VITIS_LOOP_1248_1: '
+  - DiagnosticName:  xilinx-label-all-loops
+    Message:         'Added loop label VITIS_LOOP_35_1:  '
+    FileOffset:      35
+    FilePath:        /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_cmodel.cpp
+    Replacements:    
+      - FilePath:        /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp
+        Offset:          1061558
+        Length:          0
+        ReplacementText: 'VITIS_LOOP_35_1: '
+  - DiagnosticName:  xilinx-label-all-loops
+    Message:         'Added loop label VITIS_LOOP_54_1:  '
+    FileOffset:      54
+    FilePath:        /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_cmodel.cpp
+    Replacements:    
+      - FilePath:        /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp
+        Offset:          1062082
+        Length:          0
+        ReplacementText: 'VITIS_LOOP_54_1: '
+  - DiagnosticName:  xilinx-label-all-loops
+    Message:         'Added loop label VITIS_LOOP_81_1:  '
+    FileOffset:      81
+    FilePath:        /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_cmodel.cpp
+    Replacements:    
+      - FilePath:        /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp
+        Offset:          1062751
+        Length:          0
+        ReplacementText: 'VITIS_LOOP_81_1: '
+  - DiagnosticName:  xilinx-label-all-loops
+    Message:         'Added loop label VITIS_LOOP_96_1:  '
+    FileOffset:      96
+    FilePath:        /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_cmodel.cpp
+    Replacements:    
+      - FilePath:        /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/hls/prj/sol/.autopilot/db/TinyYOLOHW_cmodel.pp.0.cpp
+        Offset:          1063269
+        Length:          0
+        ReplacementText: 'VITIS_LOOP_96_1: '
+...

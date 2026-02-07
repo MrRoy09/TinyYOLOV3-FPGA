@@ -1,0 +1,972 @@
+/*
+
+AMD Vivado v2025.1 (64-bit) [Major: 2025, Minor: 1]
+SW Build: 6140274 on Wed May 21 22:58:25 MDT 2025
+IP Build: 6138677 on Thu May 22 03:10:11 MDT 2025
+IP Build: 6138677 on Thu May 22 03:10:11 MDT 2025
+
+Process ID (PID): 806865
+License: Customer
+Mode: GUI Mode
+
+Current time: 	Sat Feb 07 23:51:21 IST 2026
+Time zone: 	India Standard Time (Asia/Kolkata)
+
+OS: Ubuntu
+OS Version: 6.14.0-37-generic
+OS Architecture: amd64
+Available processors (cores): 16
+LSB Release Description: Ubuntu 24.04.3 LTS
+
+Display: 0
+Screen size: 1920x1080
+Local screen bounds: x = 66, y = 32, width = 1854, height = 1048
+Screen resolution (DPI): 100
+Available screens: 1
+Default font: family=Dialog,name=Dialog,style=plain,size=12
+Scale size: 12
+OS font scaling: 100%
+Anti-Alias Enabled: false
+
+Java version: 	21.0.1 64-bit
+
+Java home: 	/media/ubuntu/T7/Xilinx-tools/2025.1/tps/lnx64/jre21.0.1_12
+Java executable: 	/media/ubuntu/T7/Xilinx-tools/2025.1/tps/lnx64/jre21.0.1_12/bin/java
+Java arguments: 	[-Dsun.java2d.pmoffscreen=false, -Dhttps.protocols=TLSv1,TLSv1.1,TLSv1.2, -Dsun.java2d.xrender=false, -Dsun.java2d.uiScale.enabled=false, -Dswing.aatext=true, -XX:-UsePerfData, -Djdk.map.althashing.threshold=512, -XX:StringTableSize=4072, -XX:+UseStringDeduplication, -XX:MaxGCPauseMillis=200, -XX:ParallelGCThreads=4, -XX:+ParallelRefProcEnabled, --add-opens=java.desktop/javax.swing.plaf.synth=ALL-UNNAMED, --add-opens=java.base/java.nio=ALL-UNNAMED, --add-opens=java.desktop/sun.swing=ALL-UNNAMED, --add-opens=java.desktop/javax.swing=ALL-UNNAMED, --add-opens=java.desktop/javax.swing.tree=ALL-UNNAMED, --add-opens=java.desktop/javax.swing.plaf.basic=ALL-UNNAMED, --add-opens=java.desktop/javax.swing.plaf.synth=ALL-UNNAMED, --add-opens=java.desktop/javax.swing.plaf.basic=ALL-UNNAMED, --add-opens=java.desktop/javax.swing=ALL-UNNAMED, --add-opens=java.desktop/javax.swing.tree=ALL-UNNAMED, --add-opens=java.desktop/java.awt.event=ALL-UNNAMED, --add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED, --add-exports=java.desktop/javax.swing.plaf.synth=ALL-UNNAMED, --add-exports=java.base/java.nio=ALL-UNNAMED, --add-exports=java.desktop/sun.swing=ALL-UNNAMED, --add-exports=java.desktop/javax.swing=ALL-UNNAMED, --add-exports=java.desktop/javax.swing.tree=ALL-UNNAMED, --add-exports=java.desktop/javax.swing.plaf.basic=ALL-UNNAMED, --add-exports=java.desktop/sun.swing=ALL-UNNAMED, --add-exports=java.desktop/sun.swing.table=ALL-UNNAMED, --add-exports=java.desktop/sun.swing.plaf.synth=ALL-UNNAMED, --add-exports=java.desktop/sun.awt.shell=ALL-UNNAMED, --add-exports=java.base/sun.security.action=ALL-UNNAMED, --add-exports=java.desktop/sun.font=ALL-UNNAMED, --add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED, -XX:NewSize=80m, -XX:MaxNewSize=80m, -Xms812m, -Xmx6144m, -Xss10m, -Xrs]
+Java initial memory (-Xms): 	812 MB
+Java maximum memory (-Xmx):	 6 GB
+
+User name: 	ubuntu
+User home directory: /home/ubuntu
+User working directory: /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex
+User country: 	US
+User language: 	en
+User locale: 	en_US
+
+RDI_BASEROOT: /media/ubuntu/T7/Xilinx-tools/2025.1
+HDI_APPROOT: /media/ubuntu/T7/Xilinx-tools/2025.1/Vivado
+RDI_DATADIR: /media/ubuntu/T7/Xilinx-tools/2025.1/data
+RDI_BINDIR: /media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/bin
+
+Vivado preferences file: /home/ubuntu/.Xilinx/Vivado/2025.1/vivado.xml
+Vivado preferences directory: /home/ubuntu/.Xilinx/Vivado/2025.1/
+Vivado layouts directory: /home/ubuntu/.Xilinx/Vivado/2025.1/data/layouts
+PlanAhead jar file: 	/media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/lib/classes/planAhead.jar
+Vivado log file: 	/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/vivado.log
+Vivado journal file: 	/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/vivado.jou
+Engine tmp dir: 	./.Xil/Vivado-806865-ubuntu-laptop-hp
+Non-Default Parameters:	[]
+
+Xilinx & AMD Environment Variables
+--------------------------------------------------------------------------------------------
+GNOME_SHELL_SESSION_MODE: ubuntu
+PYENV_SHELL: bash
+RDI_APPROOT: /media/ubuntu/T7/Xilinx-tools/2025.1/Vivado
+RDI_BASEROOT: /media/ubuntu/T7/Xilinx-tools/2025.1
+RDI_BINROOT: /media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/bin
+RDI_BUILD: yes
+RDI_DATADIR: /media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/data
+RDI_INSTALLROOT: /media/ubuntu/T7/Xilinx-tools
+RDI_INSTALLVER: Vivado
+RDI_JAVA_PLATFORM: 
+RDI_JAVA_VERSION: 21.0.1_12
+RDI_LIBDIR: /media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/lib/lnx64.o/Ubuntu/24:/media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/lib/lnx64.o/Ubuntu:/media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/lib/lnx64.o
+RDI_OPT_EXT: .o
+RDI_PATCHROOT: 
+RDI_PLATFORM: lnx64
+RDI_PREPEND_PATH: /media/ubuntu/T7/Xilinx-tools/2025.1/Vitis/bin:/media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/ids_lite/ISE/bin/lin64
+RDI_PROG: /media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/bin/unwrapped/lnx64.o/vivado
+RDI_SESSION_INFO: /media/ubuntu/T7/Xilinx-tools:ubuntu-laptop-hp_1770400347_345718
+RDI_SHARED_DATA: /media/ubuntu/T7/Xilinx-tools/SharedData/Vivado/data
+RDI_TPS_ROOT: /media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/tps/lnx64
+RDI_USE_JDK21: True
+SHELL: /bin/bash
+XILINX: /media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/ids_lite/ISE
+XILINX_DSP: /media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/ids_lite/ISE
+XILINX_HLS: /media/ubuntu/T7/Xilinx-tools/2025.1/Vitis
+XILINX_PLANAHEAD: /media/ubuntu/T7/Xilinx-tools/2025.1/Vivado
+XILINX_SDK: /media/ubuntu/T7/Xilinx-tools/2025.1/Vitis
+XILINX_VITIS: /media/ubuntu/T7/Xilinx-tools/2025.1/Vitis
+XILINX_VIVADO: /media/ubuntu/T7/Xilinx-tools/2025.1/Vivado
+
+
+GUI allocated memory:	812 MB
+GUI max memory:		6,144 MB
+Engine allocated memory: 2,066 MB
+
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+
+*/
+
+// TclEventType: START_GUI
+// Tcl Message: start_gui 
+// TclEventType: START_PROGRESS_DIALOG
+// TclEventType: DEBUG_PROBE_SET_CHANGE
+// TclEventType: FLOW_ADDED
+// TclEventType: FILE_SET_NEW
+// TclEventType: RUN_ADD
+// TclEventType: RUN_CURRENT
+// TclEventType: PROJECT_DASHBOARD_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_NEW
+// Tcl Message: source /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.gen/sources_1/ip/TinyYOLOHW/TinyYOLOHW_ex.tcl -notrace 
+// Tcl Message: INFO: [open_example_project] Creating new example project... 
+// TclEventType: PROJECT_NEW
+// [GUI Memory]: 94 MB (+96494kb) [00:00:06]
+// [Engine Memory]: 1,916 MB (+1857219kb) [00:00:06]
+// [GUI Memory]: 107 MB (+8576kb) [00:00:06]
+// WARNING: HEventQueue.dispatchEvent() is taking  1265 ms.
+// TclEventType: FILE_SET_OPTIONS_CHANGE
+// Tcl Message: INFO: [IP_Flow 19-234] Refreshing IP repositories INFO: [IP_Flow 19-1704] No user IP repositories specified INFO: [IP_Flow 19-2313] Loaded Vivado IP repository '/media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/data/ip'. 
+// TclEventType: FILE_SET_OPTIONS_CHANGE
+// [GUI Memory]: 122 MB (+10219kb) [00:00:07]
+// [Engine Memory]: 2,019 MB (+8177kb) [00:00:07]
+// TclEventType: FILE_SET_OPTIONS_CHANGE
+// [GUI Memory]: 129 MB (+320kb) [00:00:08]
+// TclEventType: FILE_SET_OPTIONS_CHANGE
+// [GUI Memory]: 144 MB (+8706kb) [00:00:08]
+// TclEventType: FILE_SET_OPTIONS_CHANGE
+// TclEventType: BOARD_MODIFIED
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: FILE_SET_CHANGE
+// Tcl Message: INFO: [open_example_project] Importing original IP ... INFO: [open_example_project] Generating the example project IP ... 
+// Tcl Message: INFO: [IP_Flow 19-1706] Not generating 'Instantiation Template' target for IP 'TinyYOLOHW'. Target already exists and is up to date. INFO: [IP_Flow 19-1706] Not generating 'Synthesis' target for IP 'TinyYOLOHW'. Target already exists and is up to date. 
+// Tcl Message: INFO: [open_example_project] Adding example synthesis HDL files ... INFO: [open_example_project] Adding example synthesis miscellaneous files ... INFO: [open_example_project] Adding example XDC files ... INFO: [open_example_project] Adding simulation HDL files ... 
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: FILE_SET_OPTIONS_CHANGE
+// HMemoryUtils.trashcanNow. Engine heap size: 2,078 MB. GUI used memory: 76 MB. Current time: 2/7/26, 11:51:22 PM IST
+// TclEventType: CREATE_IP_CORE
+// TclEventType: LOAD_FEATURE
+// TclEventType: REPORT_IP_STATUS_STALE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: FILESET_UPDATE_IP
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: CREATE_IP_CORE
+// TclEventType: REPORT_IP_STATUS_STALE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: FILESET_UPDATE_IP
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: CREATE_IP_CORE
+// TclEventType: REPORT_IP_STATUS_STALE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: FILESET_UPDATE_IP
+// TclEventType: FILE_SET_CHANGE
+// Tcl Message: INFO: [open_example_project] Sourcing example extension scripts ... INFO: [open_example_project] Sourcing extension script: tcl/examples_scriptext.tcl 
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: FILE_SET_OPTIONS_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: FILE_SET_OPTIONS_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: RUN_MODIFY
+// TclEventType: RUN_OPTIONS_MODIFIED
+// TclEventType: RUN_MODIFY
+// TclEventType: RUN_OPTIONS_MODIFIED
+// TclEventType: FILE_SET_OPTIONS_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: REPORT_IP_STATUS_STALE
+// TclEventType: PROJ_DESIGN_MODE_SET
+// Tcl Message: Setting xsim.simulate.xsim.more_options to -sv_seed 1 Setting modelsim.simulate.vsim.more_options to -sv_seed 1 Setting questa.simulate.vsim.more_options to -sv_seed 1 Setting ies.simulate.ncsim.more_options to -SVSEED 1 Setting xcelium.simulate.xmsim.more_options to -SVSEED 1 Setting vcs.simulate.vcs.more_options to +ntb_random_seed=1 Setting riviera.simulate.asim.more_options to -sv_seed 1 INFO: [open_example_project] Sourcing extension script: tcl/examples_scriptext_bd.tcl 
+// TclEventType: DG_GRAPH_GENERATED
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: DG_GRAPH_GENERATED
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// [Engine Memory]: 2,124 MB (+4465kb) [00:00:27]
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: PROJECT_CHANGE
+// TclEventType: DG_GRAPH_GENERATED
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: PROJECT_CHANGE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: PROJECT_CHANGE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: STOP_PROGRESS_DIALOG
+// Tcl Message: INFO: [open_example_project] Rebuilding top IP... 
+// Tcl Message: INFO: [open_example_project] Open Example Project completed 
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/a.d': 25s
+dismissDialog("Sourcing Tcl script '/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.gen/sources_1/ip/TinyYOLOHW/TinyYOLOHW_ex.tcl'"); // bk (Sourcing Tcl script '/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.gen/sources_1/ip/TinyYOLOHW/TinyYOLOHW_ex.tcl' Progress)
+// TclEventType: STOP_PROGRESS_DIALOG
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 24s
+// Tcl Message: update_compile_order -fileset sources_1 
+// TclEventType: DG_GRAPH_GENERATED
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 26s
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: FILE_SET_CHANGE
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 29m:02s
+// TclEventType: DG_GRAPH_GENERATED
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: FILE_SET_CHANGE
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 29m:04s
+// Tcl Message: update_compile_order -fileset sources_1 
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 29m:06s
+// TclEventType: DG_GRAPH_GENERATED
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 29m:08s
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: FILE_SET_CHANGE
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 29m:48s
+// TclEventType: DG_GRAPH_GENERATED
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 29m:50s
+// HMemoryUtils.trashcanNow. Engine heap size: 2,173 MB. GUI used memory: 78 MB. Current time: 2/8/26, 12:21:12 AM IST
+// Elapsed time: 1791 seconds
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Utility Sources]", 5, true, false, false, false, true, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Popup Trigger - Node
+selectMenu(PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, "Hierarchy Update"); // am (PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, Hierarchy Update)
+selectMenu(PAResourceQtoS.SrcMenu_IP_HIERARCHY, "IP Hierarchy"); // am (PAResourceQtoS.SrcMenu_IP_HIERARCHY, IP Hierarchy)
+selectMenuItem(PAResourceQtoS.SrcMenu_REFRESH_HIERARCHY, "Refresh Hierarchy"); // ap (PAResourceQtoS.SrcMenu_REFRESH_HIERARCHY)
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 30m:18s
+// TclEventType: DG_GRAPH_GENERATED
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 30m:20s
+// [GUI Memory]: 154 MB (+3756kb) [00:30:28]
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW_example_adder (TinyYOLOHW_example_adder.v)]", 2, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW_example_adder (TinyYOLOHW_example_adder.v)]", 2, false, false, false, false, false, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Double Click
+// HMemoryUtils.trashcanNow. Engine heap size: 2,256 MB. GUI used memory: 82 MB. Current time: 2/8/26, 12:21:42 AM IST
+// [Engine Memory]: 2,256 MB (+26620kb) [00:30:30]
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v)]", 1, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v)]", 1, true, false, false, false, false, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Double Click - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv)]", 3, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv)]", 3, true, false, false, false, false, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Double Click - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv)]", 4, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv)]", 4, true, false, false, false, false, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Double Click - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : xil_defaultlib.TinyYoloComputeUnit]", 5, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : xil_defaultlib.TinyYoloComputeUnit]", 5, false, false, false, false, false, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Double Click
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : xil_defaultlib.TinyYoloComputeUnit]", 5, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectButton(PAResourceCommand.PACommandNames_ADD_SOURCES, "Sources_add_sources"); // C (PAResourceCommand.PACommandNames_ADD_SOURCES, Sources_add_sources)
+// Run Command: PAResourceCommand.PACommandNames_ADD_SOURCES
+selectButton("NEXT", "Next", "Add Sources"); // JButton (NEXT)
+selectButton(PAResourceQtoS.SrcChooserPanel_ADD_DIRECTORIES, "Add Directories", "Add Sources"); // a (PAResourceQtoS.SrcChooserPanel_ADD_DIRECTORIES)
+setFolderChooser("/media/ubuntu/T7/projects/arm-bharat/hdl");
+selectButton("FINISH", "Finish", "Add Sources"); // JButton (FINISH)
+// 'f' command handler elapsed time: 11 seconds
+dismissDialog("Add Sources"); // c (dialog0)
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: FILE_SET_CHANGE
+// Tcl Message: add_files -scan_for_includes {/media/ubuntu/T7/projects/arm-bharat/hdl/kernel_window.sv /media/ubuntu/T7/projects/arm-bharat/hdl/pixel_serializer.sv /media/ubuntu/T7/projects/arm-bharat/hdl/lib/line_buffer.sv /media/ubuntu/T7/projects/arm-bharat/hdl/quantizer.sv /media/ubuntu/T7/projects/arm-bharat/hdl/compute_kernel_top.sv /media/ubuntu/T7/projects/arm-bharat/hdl/output_packer.sv /media/ubuntu/T7/projects/arm-bharat/hdl/lib/dsp_wrap_int8.sv /media/ubuntu/T7/projects/arm-bharat/hdl/partial_sum_accumalator.sv /media/ubuntu/T7/projects/arm-bharat/hdl/conv_3x3.sv /media/ubuntu/T7/projects/arm-bharat/hdl/parameter_loader.sv} 
+// HMemoryUtils.trashcanNow. Engine heap size: 2,393 MB. GUI used memory: 84 MB. Current time: 2/8/26, 12:22:07 AM IST
+// [Engine Memory]: 2,393 MB (+25154kb) [00:30:55]
+dismissDialog("Add Sources"); // bk (Add Sources  Progress)
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 30m:50s
+// TclEventType: DG_GRAPH_GENERATED
+// TclEventType: FILE_SET_CHANGE
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 30m:52s
+// Tcl Message: update_compile_order -fileset sources_1 
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv)]", 5, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_window : kernelWindow (kernel_window.sv)]", 10, true, false, false, false, false, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Double Click - Node
+// [GUI Memory]: 163 MB (+978kb) [00:31:02]
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : xil_defaultlib.bram_weights_1]", 7, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_bias_bram : xil_defaultlib.bram_bias_1]", 8, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : xil_defaultlib.bram_weights_1]", 7, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : xil_defaultlib.bram_weights_1]", 7, false, false, false, false, true, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Popup Trigger
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : xil_defaultlib.bram_weights_1]", 7, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_bias_bram : xil_defaultlib.bram_bias_1]", 8, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : xil_defaultlib.bram_weights_1]", 7, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_bias_bram : xil_defaultlib.bram_bias_1]", 8, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : xil_defaultlib.bram_weights_1]", 7, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+// Elapsed time: 33 seconds
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_bias_bram : xil_defaultlib.bram_bias_1]", 8, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), TinyYOLOHW_example_number_generator (TinyYOLOHW_example_number_generator.sv)]", 204, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), TinyYOLOHW_example_number_generator (TinyYOLOHW_example_number_generator.sv)]", 204, true, false, false, false, false, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Double Click - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), TinyYOLOHW_example_number_generator (TinyYOLOHW_example_number_generator.sv)]", 204, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), TinyYOLOHW_example_number_generator (TinyYOLOHW_example_number_generator.sv)]", 204, true, false, false, false, false, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Double Click - Node
+// HMemoryUtils.trashcanNow. Engine heap size: 2,455 MB. GUI used memory: 85 MB. Current time: 2/8/26, 12:23:07 AM IST
+// Elapsed time: 31 seconds
+selectButton(PAResourceCommand.PACommandNames_ADD_SOURCES, "Sources_add_sources"); // C (PAResourceCommand.PACommandNames_ADD_SOURCES, Sources_add_sources)
+// Run Command: PAResourceCommand.PACommandNames_ADD_SOURCES
+selectButton("NEXT", "Next", "Add Sources"); // JButton (NEXT)
+selectButton("CANCEL", "Cancel", "Add Sources"); // JButton (CANCEL)
+dismissDialog("Add Sources"); // c (dialog2)
+// Elapsed time: 12 seconds
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : xil_defaultlib.bram_weights_1]", 7, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : xil_defaultlib.bram_weights_1]", 7, false, false, false, false, false, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Double Click
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : xil_defaultlib.bram_weights_1]", 7, false, false, false, false, true, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Popup Trigger
+selectMenu(PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, "Hierarchy Update"); // am (PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, Hierarchy Update)
+selectMenu(PAResourceQtoS.SrcMenu_IP_HIERARCHY, "IP Hierarchy"); // am (PAResourceQtoS.SrcMenu_IP_HIERARCHY, IP Hierarchy)
+selectMenu(PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, "Hierarchy Update"); // am (PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, Hierarchy Update)
+selectMenu(PAResourceQtoS.SrcMenu_IP_HIERARCHY, "IP Hierarchy"); // am (PAResourceQtoS.SrcMenu_IP_HIERARCHY, IP Hierarchy)
+selectMenuItem(PAResourceCommand.PACommandNames_ADD_SOURCES, "Add Sources..."); // ap (PAResourceCommand.PACommandNames_ADD_SOURCES, add_sources_menu)
+selectButton("NEXT", "Next", "Add Sources"); // JButton (NEXT)
+selectButton(PAResourceQtoS.SrcChooserPanel_ADD_HDL_AND_NETLIST_FILES_TO_YOUR_PROJECT, "Add Files", "Add Sources"); // a (PAResourceQtoS.SrcChooserPanel_ADD_HDL_AND_NETLIST_FILES_TO_YOUR_PROJECT)
+selectButton((HResource) null, "FileChooser.upFolderIcon", "Add Source Files"); // JButton (FileChooser.upFolderIcon)
+setFileChooser("/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci");
+selectButton(PAResourceQtoS.SrcChooserPanel_ADD_DIRECTORIES, "Add Directories", "Add Sources"); // a (PAResourceQtoS.SrcChooserPanel_ADD_DIRECTORIES)
+setFolderChooser("/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1");
+selectButton("FINISH", "Finish", "Add Sources"); // JButton (FINISH)
+// 'f' command handler elapsed time: 24 seconds
+dismissDialog("Add Sources"); // c (dialog3)
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: FILE_SET_CHANGE
+// Tcl Message: add_files -scan_for_includes /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci 
+// TclEventType: FILE_SET_CHANGE
+// HMemoryUtils.trashcanNow. Engine heap size: 2,517 MB. GUI used memory: 87 MB. Current time: 2/8/26, 12:24:22 AM IST
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// [Engine Memory]: 2,514 MB (+1457kb) [00:33:10]
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// Tcl Message: add_files -scan_for_includes {/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/TinyYOLOHW/TinyYOLOHW.xci /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_weights_1/bram_weights_1.xci /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci} 
+dismissDialog("Add Sources"); // bk (Add Sources  Progress)
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: DG_GRAPH_GENERATED
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 33m:06s
+selectButton(PAResourceAtoD.CmdMsgDialog_OK, "OK", "Critical Messages"); // f (PAResourceAtoD.CmdMsgDialog_OK)
+dismissDialog("Critical Messages"); // a (dialog6)
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: FILE_SET_CHANGE
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 33m:08s
+// Tcl Message: update_compile_order -fileset sources_1 
+// TclEventType: DG_GRAPH_GENERATED
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 33m:10s
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 33m:12s
+collapseTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v)]", 1); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, "[, Synthesis, Run Synthesis]", 16, false); // g (PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, Flow Navigator Tree)
+// Run Command: PAResourceCommand.PACommandNames_RUN_SYNTHESIS
+// HMemoryUtils.trashcanNow. Engine heap size: 2,514 MB. GUI used memory: 88 MB. Current time: 2/8/26, 12:24:38 AM IST
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: RUN_LAUNCH
+// TclEventType: RUN_MODIFY
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// Tcl Message: launch_runs synth_1 -jobs 8 
+// Tcl Message: INFO: [Vivado 12-4149] The synthesis checkpoint for IP '/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci' is already up-to-date INFO: [Vivado 12-4149] The synthesis checkpoint for IP '/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci' is already up-to-date INFO: [Vivado 12-4149] The synthesis checkpoint for IP '/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_weights_1/bram_weights_1.xci' is already up-to-date 
+// Tcl Message: [Sun Feb  8 00:24:38 2026] Launched synth_1... Run output will be captured here: /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.runs/synth_1/runme.log 
+dismissDialog("Starting Design Runs"); // bk (Starting Design Runs Progress)
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_FAILED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_STEP_COMPLETED
+// Elapsed time: 43 seconds
+selectButton(RDIResource.BaseDialog_OK, "OK", "Synthesis Failed"); // f (RDIResource.BaseDialog_OK)
+// Run Command: PAResourceCommand.PACommandNames_MESSAGE_WINDOW
+dismissDialog("Synthesis Failed"); // W.a (dialog7)
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: FILE_SET_CHANGE
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 35m:16s
+// TclEventType: DG_GRAPH_GENERATED
+// HMemoryUtils.trashcanNow. Engine heap size: 2,544 MB. GUI used memory: 88 MB. Current time: 2/8/26, 12:26:37 AM IST
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 35m:18s
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: FILE_SET_CHANGE
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 35m:46s
+// TclEventType: DG_GRAPH_GENERATED
+// HMemoryUtils.trashcanNow. Engine heap size: 2,568 MB. GUI used memory: 89 MB. Current time: 2/8/26, 12:27:07 AM IST
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 35m:48s
+// Elapsed time: 119 seconds
+selectTree(PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, "[, Synthesis, Run Synthesis]", 16, false); // g (PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, Flow Navigator Tree)
+// Run Command: PAResourceCommand.PACommandNames_RUN_SYNTHESIS
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: RUN_MODIFY
+// TclEventType: RUN_RESET
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_RESET
+// TclEventType: RUN_MODIFY
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// Tcl Message: reset_run synth_1 
+// HMemoryUtils.trashcanNow. Engine heap size: 2,544 MB. GUI used memory: 89 MB. Current time: 2/8/26, 12:27:22 AM IST
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: RUN_LAUNCH
+// TclEventType: RUN_MODIFY
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// Tcl Message: launch_runs synth_1 -jobs 8 
+// Tcl Message: INFO: [Vivado 12-4149] The synthesis checkpoint for IP '/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci' is already up-to-date INFO: [Vivado 12-4149] The synthesis checkpoint for IP '/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci' is already up-to-date INFO: [Vivado 12-4149] The synthesis checkpoint for IP '/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_weights_1/bram_weights_1.xci' is already up-to-date 
+// Tcl Message: [Sun Feb  8 00:27:22 2026] Launched synth_1... Run output will be captured here: /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.runs/synth_1/runme.log 
+dismissDialog("Starting Design Runs"); // bk (Starting Design Runs Progress)
+selectTab((HResource) null, (HResource) null, "Messages", 1); // ab
+// TclEventType: RUN_STATUS_CHANGE
+selectTab((HResource) null, (HResource) null, "Tcl Console", 0); // ab
+selectTab((HResource) null, (HResource) null, "Reports", 3); // ab
+selectTab((HResource) null, (HResource) null, "Design Runs", 4); // ab
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_STEP_COMPLETED
+// WARNING: HSwingWorker (Update Runs Swing Worker) is taking 1945 ms. Increasing delay to 3000 ms.
+// Elapsed time: 232 seconds
+selectTreeTableHeader(PAResourceEtoH.ExpRunTreePanel_EXP_RUN_TREE_TABLE, "LUT", 14); // ar (PAResourceEtoH.ExpRunTreePanel_EXP_RUN_TREE_TABLE)
+selectTreeTableHeader(PAResourceEtoH.ExpRunTreePanel_EXP_RUN_TREE_TABLE, "FF", 15); // ar (PAResourceEtoH.ExpRunTreePanel_EXP_RUN_TREE_TABLE)
+// Elapsed time: 71 seconds
+selectTab((HResource) null, (HResource) null, "Reports", 3); // ab
+selectTreeTable(PAResourceEtoH.ExpReportTreePanel_EXP_REPORT_TREE_TABLE, "Utilization - Synth Design ; report_utilization ;  ; Sun Feb 08 00:30:49 IST 2026 ; 9901", 2, "Utilization - Synth Design", 0, false); // K (PAResourceEtoH.ExpReportTreePanel_EXP_REPORT_TREE_TABLE)
+expandTreeTable(PAResourceEtoH.ExpReportTreePanel_EXP_REPORT_TREE_TABLE, "Utilization - Synth Design ; report_utilization ;  ; Sun Feb 08 00:30:49 IST 2026 ; 9901", 2); // K (PAResourceEtoH.ExpReportTreePanel_EXP_REPORT_TREE_TABLE)
+selectTreeTable(PAResourceEtoH.ExpReportTreePanel_EXP_REPORT_TREE_TABLE, "Utilization - Synth Design ; report_utilization ;  ; Sun Feb 08 00:30:49 IST 2026 ; 9901", 2, "Utilization - Synth Design", 0, false, false, false, false, false, true); // K (PAResourceEtoH.ExpReportTreePanel_EXP_REPORT_TREE_TABLE) - Double Click
+selectTreeTable(PAResourceEtoH.ExpReportTreePanel_EXP_REPORT_TREE_TABLE, "synthesis_report ;  ;  ; Sun Feb 08 00:30:49 IST 2026 ; 720442", 3, "synthesis_report", 0, false); // K (PAResourceEtoH.ExpReportTreePanel_EXP_REPORT_TREE_TABLE)
+expandTreeTable(PAResourceEtoH.ExpReportTreePanel_EXP_REPORT_TREE_TABLE, "synthesis_report ;  ;  ; Sun Feb 08 00:30:49 IST 2026 ; 720442", 3); // K (PAResourceEtoH.ExpReportTreePanel_EXP_REPORT_TREE_TABLE)
+selectTreeTable(PAResourceEtoH.ExpReportTreePanel_EXP_REPORT_TREE_TABLE, "synthesis_report ;  ;  ; Sun Feb 08 00:30:49 IST 2026 ; 720442", 3, "synthesis_report", 0, false, false, false, false, false, true); // K (PAResourceEtoH.ExpReportTreePanel_EXP_REPORT_TREE_TABLE) - Double Click
+// HMemoryUtils.trashcanNow. Engine heap size: 2,619 MB. GUI used memory: 97 MB. Current time: 2/8/26, 12:32:47 AM IST
+// [GUI Memory]: 174 MB (+2419kb) [00:41:42]
+// Elapsed time: 12 seconds
+selectTree(PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, "[, RTL Analysis, Open Elaborated Design]", 14, true); // g (PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, Flow Navigator Tree) - Node
+// Run Command: PAResourceCommand.PACommandNames_GOTO_RTL_DESIGN
+selectButton(RDIResource.BaseDialog_OK, "OK", "Elaborate Design"); // f (RDIResource.BaseDialog_OK)
+dismissDialog("Elaborate Design"); // x (dialog8)
+// Tcl Message: synth_design -rtl -rtl_skip_mlo -name rtl_1 
+// Tcl Message: Command: synth_design -rtl -rtl_skip_mlo -name rtl_1 Starting synth_design Using part: xck26-sfvc784-2LV-c Top: TinyYOLOHW 
+// TclEventType: ELABORATE_START
+// TclEventType: MSGMGR_REFRESH_MSG
+// [Engine Memory]: 3,612 MB (+1019352kb) [00:41:47]
+// TclEventType: ELABORATE_FINISH
+// HMemoryUtils.trashcanNow. Engine heap size: 3,890 MB. GUI used memory: 99 MB. Current time: 2/8/26, 12:33:07 AM IST
+// HMemoryUtils.trashcanNow. Engine heap size: 4,874 MB. GUI used memory: 97 MB. Current time: 2/8/26, 12:33:26 AM IST
+// TclEventType: READ_XDC_FILE_START
+// TclEventType: READ_XDC_FILE_END
+// TclEventType: FLOORPLAN_MODIFY
+// TclEventType: DESIGN_NEW
+// HMemoryUtils.trashcanNow. Engine heap size: 4,874 MB. GUI used memory: 97 MB. Current time: 2/8/26, 12:33:27 AM IST
+// [Engine Memory]: 4,874 MB (+1134082kb) [00:42:15]
+// TclEventType: DESIGN_NEW
+// [GUI Memory]: 231 MB (+51258kb) [00:42:17]
+// [Engine Memory]: 5,983 MB (+907317kb) [00:42:17]
+// [GUI Memory]: 256 MB (+13638kb) [00:42:18]
+// Xgd.load filename: /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/./.Xil/Vivado-806865-ubuntu-laptop-hp/xck26_detail.xgd_71D8C197 elapsed time: 2.9s
+// DeviceModel: Load Xgds SwingWorker Join Forever elapsed time: 3.3s
+// WARNING: HEventQueue.dispatchEvent() is taking  2197 ms.
+// TclEventType: CURR_DESIGN_SET
+// Tcl Message: INFO: [Device 21-403] Loading part xck26-sfvc784-2LV-c INFO: [Synth 8-7079] Multithreading enabled for synth_design using a maximum of 7 processes. INFO: [Synth 8-7078] Launching helper process for spawning children vivado processes INFO: [Synth 8-7075] Helper process launched with PID 837838 
+// Tcl Message: --------------------------------------------------------------------------------- 
+// Tcl Message: Starting RTL Elaboration : Time (s): cpu = 00:00:04 ; elapsed = 00:00:03 . Memory (MB): peak = 11694.277 ; gain = 150.773 ; free physical = 5904 ; free virtual = 70653 
+// Tcl Message: --------------------------------------------------------------------------------- 
+// Tcl Message: INFO: [Synth 8-6157] synthesizing module 'TinyYOLOHW' [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW.v:7] INFO: [Synth 8-6157] synthesizing module 'TinyYOLOHW_control_s_axi' [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_control_s_axi.v:9] 
+// Tcl Message: 	Parameter C_S_AXI_ADDR_WIDTH bound to: 12 - type: integer  	Parameter C_S_AXI_DATA_WIDTH bound to: 32 - type: integer  
+// Tcl Message: INFO: [Synth 8-155] case statement is not full and has no default [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_control_s_axi.v:255] INFO: [Synth 8-6155] done synthesizing module 'TinyYOLOHW_control_s_axi' (0#1) [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_control_s_axi.v:9] INFO: [Synth 8-6157] synthesizing module 'TinyYOLOHW_example' [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_example.sv:5] 
+// Tcl Message: 	Parameter C_AXI_IN_TDATA_WIDTH bound to: 512 - type: integer  	Parameter C_AXI_OUT_TDATA_WIDTH bound to: 512 - type: integer  
+// Tcl Message: INFO: [Synth 8-6157] synthesizing module 'TinyYOLOHW_example_vadd_axis' [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_example_vadd_axis.sv:6] 
+// Tcl Message: 	Parameter C_S_AXIS_TDATA_WIDTH bound to: 512 - type: integer  	Parameter C_M_AXIS_TDATA_WIDTH bound to: 512 - type: integer  	Parameter C_ADDER_BIT_WIDTH bound to: 32 - type: integer  	Parameter C_NUM_CLOCKS bound to: 2 - type: integer  	Parameter C_GEN_S_AXIS_DATA bound to: 0 - type: integer  	Parameter C_LENGTH_IN_BYTES bound to: 16384 - type: integer  
+// Tcl Message: INFO: [Synth 8-6157] synthesizing module 'xpm_fifo_axis' [/media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/data/ip/xpm/xpm_fifo/hdl/xpm_fifo.sv:2373] 
+// Tcl Message: 	Parameter DEST_SYNC_FF bound to: 3 - type: integer  	Parameter INIT_SYNC_FF bound to: 0 - type: integer  	Parameter SIM_ASSERT_CHK bound to: 1 - type: integer  	Parameter SRC_INPUT_REG bound to: 1 - type: integer  
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'xpm_cdc_single' (0#1) [/media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/data/ip/xpm/xpm_cdc/hdl/xpm_cdc.sv:152] INFO: [Synth 8-6157] synthesizing module 'TinyYoloComputeUnit' [/media/ubuntu/T7/projects/arm-bharat/hdl/compute_kernel_top.sv:2] 
+// Tcl Message: 	Parameter C_AXIS_TDATA_WIDTH bound to: 512 - type: integer  	Parameter NUM_FILTERS bound to: 64 - type: integer  
+// Tcl Message: 	Parameter MAX_WIDTH bound to: 512 - type: integer  
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'partial_sum_accumulator' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/partial_sum_accumalator.sv:1] INFO: [Synth 8-6157] synthesizing module 'quantizer' [/media/ubuntu/T7/projects/arm-bharat/hdl/quantizer.sv:1] INFO: [Synth 8-6155] done synthesizing module 'quantizer' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/quantizer.sv:1] INFO: [Synth 8-226] default block is never used [/media/ubuntu/T7/projects/arm-bharat/hdl/compute_kernel_top.sv:45] INFO: [Synth 8-6157] synthesizing module 'parameter_loader' [/media/ubuntu/T7/projects/arm-bharat/hdl/parameter_loader.sv:1] 
+// Tcl Message: 	Parameter NUM_FILTERS bound to: 64 - type: integer  	Parameter K_SIZE bound to: 9 - type: integer  	Parameter W_ADDR_W bound to: 11 - type: integer  	Parameter B_ADDR_W bound to: 9 - type: integer  	Parameter AXIS_WIDTH bound to: 512 - type: integer  
+// Tcl Message: INFO: [Synth 8-155] case statement is not full and has no default [/media/ubuntu/T7/projects/arm-bharat/hdl/parameter_loader.sv:60] INFO: [Synth 8-6155] done synthesizing module 'parameter_loader' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/parameter_loader.sv:1] INFO: [Synth 8-6157] synthesizing module 'bram_weights_1' [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/.Xil/Vivado-806865-ubuntu-laptop-hp/realtime/bram_weights_1_stub.v:6] INFO: [Synth 8-6155] done synthesizing module 'bram_weights_1' (0#1) [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/.Xil/Vivado-806865-ubuntu-laptop-hp/realtime/bram_weights_1_stub.v:6] 
+// Tcl Message: INFO: [Synth 8-6157] synthesizing module 'bram_bias_1' [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/.Xil/Vivado-806865-ubuntu-laptop-hp/realtime/bram_bias_1_stub.v:6] INFO: [Synth 8-6155] done synthesizing module 'bram_bias_1' (0#1) [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/.Xil/Vivado-806865-ubuntu-laptop-hp/realtime/bram_bias_1_stub.v:6] 
+// Tcl Message: INFO: [Synth 8-6157] synthesizing module 'pixel_serializer' [/media/ubuntu/T7/projects/arm-bharat/hdl/pixel_serializer.sv:2] 
+// Tcl Message: 	Parameter AXIS_WIDTH bound to: 512 - type: integer  	Parameter PIXEL_WIDTH bound to: 8 - type: integer  
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'pixel_serializer' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/pixel_serializer.sv:2] INFO: [Synth 8-6157] synthesizing module 'kernelWindow' [/media/ubuntu/T7/projects/arm-bharat/hdl/kernel_window.sv:1] 
+// Tcl Message: 	Parameter MAX_LB_WIDTH bound to: 8192 - type: integer  
+// Tcl Message: INFO: [Synth 8-6157] synthesizing module 'lineBuffer' [/media/ubuntu/T7/projects/arm-bharat/hdl/lib/line_buffer.sv:1] 
+// Tcl Message: 	Parameter MAX_WIDTH bound to: 8192 - type: integer  
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'lineBuffer' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/lib/line_buffer.sv:1] INFO: [Synth 8-6155] done synthesizing module 'kernelWindow' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/kernel_window.sv:1] INFO: [Synth 8-6157] synthesizing module 'output_packer' [/media/ubuntu/T7/projects/arm-bharat/hdl/output_packer.sv:2] 
+// Tcl Message: 	Parameter NUM_FILTERS bound to: 64 - type: integer  	Parameter AXIS_WIDTH bound to: 512 - type: integer  
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'output_packer' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/output_packer.sv:2] 
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'TinyYoloComputeUnit' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/compute_kernel_top.sv:2] INFO: [Synth 8-6155] done synthesizing module 'TinyYOLOHW_example_vadd_axis' (0#1) [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_example_vadd_axis.sv:6] 
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'TinyYOLOHW_example' (0#1) [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_example.sv:5] INFO: [Synth 8-6155] done synthesizing module 'TinyYOLOHW' (0#1) [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW.v:7] 
+// Tcl Message: INFO: [Common 17-14] Message 'Synth 8-7129' appears 100 times and further instances of the messages will be disabled. Use the Tcl command set_msg_config to change the current settings. 
+// Tcl Message: --------------------------------------------------------------------------------- 
+// Tcl Message: Finished RTL Elaboration : Time (s): cpu = 00:00:05 ; elapsed = 00:00:05 . Memory (MB): peak = 11805.340 ; gain = 261.836 ; free physical = 5784 ; free virtual = 70538 
+// Tcl Message: --------------------------------------------------------------------------------- 
+// Tcl Message: --------------------------------------------------------------------------------- Start Handling Custom Attributes --------------------------------------------------------------------------------- --------------------------------------------------------------------------------- 
+// Tcl Message: Finished Handling Custom Attributes : Time (s): cpu = 00:00:05 ; elapsed = 00:00:05 . Memory (MB): peak = 11805.340 ; gain = 261.836 ; free physical = 5784 ; free virtual = 70538 
+// Tcl Message: --------------------------------------------------------------------------------- --------------------------------------------------------------------------------- 
+// Tcl Message: Finished RTL Optimization Phase 1 : Time (s): cpu = 00:00:05 ; elapsed = 00:00:05 . Memory (MB): peak = 11805.340 ; gain = 261.836 ; free physical = 5784 ; free virtual = 70538 
+// Tcl Message: --------------------------------------------------------------------------------- 
+// Tcl Message: Netlist sorting complete. Time (s): cpu = 00:00:02 ; elapsed = 00:00:02 . Memory (MB): peak = 11860.793 ; gain = 21.000 ; free physical = 5958 ; free virtual = 70712 
+// Tcl Message: INFO: [Netlist 29-17] Analyzing 576 Unisim elements for replacement INFO: [Netlist 29-28] Unisim Transformation completed in 3 CPU seconds INFO: [Project 1-479] Netlist was created with Vivado 2025.1 INFO: [Project 1-570] Preparing netlist for logic optimization 
+// Tcl Message:  Processing XDC Constraints Initializing timing engine Parsing XDC File [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_user.xdc] Finished Parsing XDC File [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_user.xdc] Completed Processing XDC Constraints  
+// Tcl Message: Netlist sorting complete. Time (s): cpu = 00:00:00.02 ; elapsed = 00:00:00.01 . Memory (MB): peak = 12815.348 ; gain = 0.000 ; free physical = 5187 ; free virtual = 69935 
+// Tcl Message: INFO: [Project 1-111] Unisim Transformation Summary:   A total of 576 instances were transformed.   DSP48E2 => DSP48E2 (DSP_ALU, DSP_A_B_DATA, DSP_C_DATA, DSP_MULTIPLIER, DSP_M_DATA, DSP_OUTPUT, DSP_PREADD, DSP_PREADD_DATA): 576 instances  
+// TclEventType: CURR_DESIGN_SET
+// [GUI Memory]: 294 MB (+26972kb) [00:42:19]
+// [Engine Memory]: 6,293 MB (+10930kb) [00:42:19]
+// Tcl Message: RTL Elaboration Complete:  : Time (s): cpu = 00:01:16 ; elapsed = 00:00:32 . Memory (MB): peak = 13409.980 ; gain = 1866.477 ; free physical = 4216 ; free virtual = 69099 
+// Tcl Message: 85 Infos, 156 Warnings, 0 Critical Warnings and 0 Errors encountered. synth_design completed successfully 
+// Tcl Message: synth_design: Time (s): cpu = 00:01:18 ; elapsed = 00:00:36 . Memory (MB): peak = 13409.980 ; gain = 2849.336 ; free physical = 4216 ; free virtual = 69099 
+// Tcl Message: INFO: [Common 17-2834] synth_design peak Physical Memory [PSS] (MB): overall = 3938.628; main = 3938.628; forked = 0.000 INFO: [Common 17-2834] synth_design peak Virtual Memory [VSS] (MB): overall = 13409.984; main = 13409.984; forked = 0.000 
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/q.a': 37s
+// 'dX' command handler elapsed time: 37 seconds
+// Elapsed time: 35 seconds
+dismissDialog("Open Elaborated Design"); // bk (Open Elaborated Design Progress)
+// TclEventType: HFED_INIT_ROUTE_STORAGE_COMPLETED
+// RouteApi::loadEngineXgdAndInitRouteStorage elapsed time: 2.9s
+// [GUI Memory]: 316 MB (+6790kb) [00:42:21]
+// Elapsed time: 11 seconds
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_nets inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/rst]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+// PAPropertyPanels.initPanels (rst) elapsed time: 0.2s
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_nets inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/final_quant_out[17]]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+selectView(PAResourceOtoP.PAViews_SCHEMATIC, "Schematic", 642, 281, 1144, 631, false, false, false, true, false); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic) - Popup Trigger
+selectMenu(PAResourceItoN.NetlistSchMenuAndMouse_VIEW, "View"); // am (PAResourceItoN.NetlistSchMenuAndMouse_VIEW, View)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+// [GUI Memory]: 344 MB (+12777kb) [00:43:05]
+// HMemoryUtils.trashcanNow. Engine heap size: 6,369 MB. GUI used memory: 258 MB. Current time: 2/8/26, 12:34:22 AM IST
+// Elapsed time: 38 seconds
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/gen_engines[62].i_conv]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/gen_engines[62].i_conv]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+// Elapsed time: 46 seconds
+selectButton(PAResourceQtoS.SchematicView_PREVIOUS, "Schematic_previousview"); // C (PAResourceQtoS.SchematicView_PREVIOUS, Schematic_previousview)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+selectButton(PAResourceQtoS.SchematicView_PREVIOUS, "Schematic_previousview"); // C (PAResourceQtoS.SchematicView_PREVIOUS, Schematic_previousview)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+selectButton(PAResourceQtoS.SchematicView_PREVIOUS, "Schematic_previousview"); // C (PAResourceQtoS.SchematicView_PREVIOUS, Schematic_previousview)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/gen_engines[62].i_conv]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/gen_engines[62].i_conv]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+selectButton(PAResourceQtoS.SchematicView_PREVIOUS, "Schematic_previousview"); // C (PAResourceQtoS.SchematicView_PREVIOUS, Schematic_previousview)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/gen_engines[61].i_conv]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/gen_engines[61].i_conv]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+selectButton(PAResourceQtoS.SchematicView_PREVIOUS, "Schematic_previousview"); // C (PAResourceQtoS.SchematicView_PREVIOUS, Schematic_previousview)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/gen_engines[50].i_conv]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/gen_engines[50].i_conv]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+selectButton(PAResourceQtoS.SchematicView_PREVIOUS, "Schematic_previousview"); // C (PAResourceQtoS.SchematicView_PREVIOUS, Schematic_previousview)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/gen_engines[46].i_conv]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/gen_engines[46].i_conv]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+selectButton(PAResourceQtoS.SchematicView_PREVIOUS, "Schematic_previousview"); // C (PAResourceQtoS.SchematicView_PREVIOUS, Schematic_previousview)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/gen_engines[42].i_conv]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "select_objects [get_cells inst_example/inst_example_vadd__axi_in_to_axi_out/inst_compute_engine/gen_engines[42].i_conv]"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+selectButton(PAResourceQtoS.SchematicView_PREVIOUS, "Schematic_previousview"); // C (PAResourceQtoS.SchematicView_PREVIOUS, Schematic_previousview)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+selectView(PAResourceOtoP.PAViews_SCHEMATIC, "Schematic", 723, 310, 1144, 631, false, false, false, true, false); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic) - Popup Trigger
+selectMenu(PAResourceItoN.NetlistSchMenuAndMouse_VIEW, "View"); // am (PAResourceItoN.NetlistSchMenuAndMouse_VIEW, View)
+runTclCommand (PAResourceOtoP.PAViews_SCHEMATIC, "unselect_objects"); // j (PAResourceOtoP.PAViews_SCHEMATIC, PlanAheadTabSchematic)
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: DESIGN_STALE
+// TclEventType: FILE_SET_CHANGE
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 49m:20s
+// TclEventType: DG_GRAPH_GENERATED
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 49m:22s
+// TclEventType: DESIGN_STALE
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: FILE_SET_CHANGE
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 50m:44s
+// TclEventType: DG_GRAPH_GENERATED
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 50m:46s
+// TclEventType: DESIGN_STALE
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: FILE_SET_CHANGE
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 51m:10s
+// TclEventType: DG_GRAPH_GENERATED
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 51m:12s
+// Elapsed time: 425 seconds
+selectButton(PAResourceOtoP.ProjectTab_RELOAD, "Reload"); // h (PAResourceOtoP.ProjectTab_RELOAD)
+// TclEventType: ELABORATE_START
+// TclEventType: MSGMGR_REFRESH_MSG
+// Tcl Message: refresh_design 
+// Tcl Message: INFO: [Synth 8-7079] Multithreading enabled for synth_design using a maximum of 7 processes. 
+// Tcl Message: --------------------------------------------------------------------------------- 
+// Tcl Message: Starting RTL Elaboration : Time (s): cpu = 00:00:04 ; elapsed = 00:00:04 . Memory (MB): peak = 13563.000 ; gain = 0.000 ; free physical = 2769 ; free virtual = 68685 
+// Tcl Message: --------------------------------------------------------------------------------- 
+// Tcl Message: INFO: [Synth 8-6157] synthesizing module 'TinyYOLOHW' [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW.v:7] INFO: [Synth 8-6157] synthesizing module 'TinyYOLOHW_control_s_axi' [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_control_s_axi.v:9] 
+// Tcl Message: 	Parameter C_S_AXI_ADDR_WIDTH bound to: 12 - type: integer  	Parameter C_S_AXI_DATA_WIDTH bound to: 32 - type: integer  
+// Tcl Message: INFO: [Synth 8-155] case statement is not full and has no default [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_control_s_axi.v:255] INFO: [Synth 8-6155] done synthesizing module 'TinyYOLOHW_control_s_axi' (0#1) [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_control_s_axi.v:9] INFO: [Synth 8-6157] synthesizing module 'TinyYOLOHW_example' [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_example.sv:5] 
+// Tcl Message: 	Parameter C_AXI_IN_TDATA_WIDTH bound to: 512 - type: integer  	Parameter C_AXI_OUT_TDATA_WIDTH bound to: 512 - type: integer  
+// Tcl Message: INFO: [Synth 8-6157] synthesizing module 'TinyYOLOHW_example_vadd_axis' [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_example_vadd_axis.sv:6] 
+// Tcl Message: 	Parameter C_S_AXIS_TDATA_WIDTH bound to: 512 - type: integer  	Parameter C_M_AXIS_TDATA_WIDTH bound to: 512 - type: integer  	Parameter C_ADDER_BIT_WIDTH bound to: 32 - type: integer  	Parameter C_NUM_CLOCKS bound to: 2 - type: integer  	Parameter C_GEN_S_AXIS_DATA bound to: 0 - type: integer  	Parameter C_LENGTH_IN_BYTES bound to: 16384 - type: integer  
+// Tcl Message: INFO: [Synth 8-6157] synthesizing module 'xpm_fifo_axis' [/media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/data/ip/xpm/xpm_fifo/hdl/xpm_fifo.sv:2373] 
+// Tcl Message: 	Parameter DEST_SYNC_FF bound to: 3 - type: integer  	Parameter INIT_SYNC_FF bound to: 0 - type: integer  	Parameter SIM_ASSERT_CHK bound to: 1 - type: integer  	Parameter SRC_INPUT_REG bound to: 1 - type: integer  
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'xpm_cdc_single' (0#1) [/media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/data/ip/xpm/xpm_cdc/hdl/xpm_cdc.sv:152] INFO: [Synth 8-6157] synthesizing module 'TinyYoloComputeUnit' [/media/ubuntu/T7/projects/arm-bharat/hdl/compute_kernel_top.sv:2] 
+// Tcl Message: 	Parameter C_AXIS_TDATA_WIDTH bound to: 512 - type: integer  	Parameter NUM_FILTERS bound to: 64 - type: integer  
+// Tcl Message: 	Parameter MAX_WIDTH bound to: 512 - type: integer  
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'partial_sum_accumulator' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/partial_sum_accumalator.sv:1] INFO: [Synth 8-6157] synthesizing module 'quantizer' [/media/ubuntu/T7/projects/arm-bharat/hdl/quantizer.sv:1] INFO: [Synth 8-6155] done synthesizing module 'quantizer' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/quantizer.sv:1] INFO: [Synth 8-226] default block is never used [/media/ubuntu/T7/projects/arm-bharat/hdl/compute_kernel_top.sv:45] INFO: [Synth 8-6157] synthesizing module 'parameter_loader' [/media/ubuntu/T7/projects/arm-bharat/hdl/parameter_loader.sv:1] 
+// Tcl Message: 	Parameter NUM_FILTERS bound to: 64 - type: integer  	Parameter K_SIZE bound to: 9 - type: integer  	Parameter W_ADDR_W bound to: 9 - type: integer  	Parameter B_ADDR_W bound to: 9 - type: integer  	Parameter AXIS_WIDTH bound to: 512 - type: integer  
+// Tcl Message: INFO: [Synth 8-155] case statement is not full and has no default [/media/ubuntu/T7/projects/arm-bharat/hdl/parameter_loader.sv:60] INFO: [Synth 8-6155] done synthesizing module 'parameter_loader' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/parameter_loader.sv:1] INFO: [Synth 8-6157] synthesizing module 'bram_weights_1' [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/.Xil/Vivado-806865-ubuntu-laptop-hp/realtime/bram_weights_1_stub.v:6] INFO: [Synth 8-6155] done synthesizing module 'bram_weights_1' (0#1) [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/.Xil/Vivado-806865-ubuntu-laptop-hp/realtime/bram_weights_1_stub.v:6] 
+// Tcl Message: INFO: [Synth 8-6157] synthesizing module 'bram_bias_1' [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/.Xil/Vivado-806865-ubuntu-laptop-hp/realtime/bram_bias_1_stub.v:6] INFO: [Synth 8-6155] done synthesizing module 'bram_bias_1' (0#1) [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/.Xil/Vivado-806865-ubuntu-laptop-hp/realtime/bram_bias_1_stub.v:6] 
+// Tcl Message: INFO: [Synth 8-6157] synthesizing module 'pixel_serializer' [/media/ubuntu/T7/projects/arm-bharat/hdl/pixel_serializer.sv:2] 
+// Tcl Message: 	Parameter AXIS_WIDTH bound to: 512 - type: integer  	Parameter PIXEL_WIDTH bound to: 8 - type: integer  
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'pixel_serializer' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/pixel_serializer.sv:2] INFO: [Synth 8-6157] synthesizing module 'kernelWindow' [/media/ubuntu/T7/projects/arm-bharat/hdl/kernel_window.sv:1] 
+// Tcl Message: 	Parameter MAX_LB_WIDTH bound to: 8192 - type: integer  
+// Tcl Message: INFO: [Synth 8-6157] synthesizing module 'lineBuffer' [/media/ubuntu/T7/projects/arm-bharat/hdl/lib/line_buffer.sv:1] 
+// Tcl Message: 	Parameter MAX_WIDTH bound to: 8192 - type: integer  
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'lineBuffer' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/lib/line_buffer.sv:1] INFO: [Synth 8-6155] done synthesizing module 'kernelWindow' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/kernel_window.sv:1] INFO: [Synth 8-6157] synthesizing module 'output_packer' [/media/ubuntu/T7/projects/arm-bharat/hdl/output_packer.sv:2] 
+// Tcl Message: 	Parameter NUM_FILTERS bound to: 64 - type: integer  	Parameter AXIS_WIDTH bound to: 512 - type: integer  
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'output_packer' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/output_packer.sv:2] 
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'TinyYoloComputeUnit' (0#1) [/media/ubuntu/T7/projects/arm-bharat/hdl/compute_kernel_top.sv:2] INFO: [Synth 8-6155] done synthesizing module 'TinyYOLOHW_example_vadd_axis' (0#1) [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_example_vadd_axis.sv:6] 
+// Tcl Message: INFO: [Synth 8-6155] done synthesizing module 'TinyYOLOHW_example' (0#1) [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_example.sv:5] INFO: [Synth 8-6155] done synthesizing module 'TinyYOLOHW' (0#1) [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW.v:7] 
+// Tcl Message: INFO: [Common 17-14] Message 'Synth 8-7129' appears 100 times and further instances of the messages will be disabled. Use the Tcl command set_msg_config to change the current settings. 
+// Tcl Message: --------------------------------------------------------------------------------- 
+// Tcl Message: Finished RTL Elaboration : Time (s): cpu = 00:00:06 ; elapsed = 00:00:05 . Memory (MB): peak = 13653.918 ; gain = 90.918 ; free physical = 2635 ; free virtual = 68551 
+// Tcl Message: --------------------------------------------------------------------------------- 
+// Tcl Message: --------------------------------------------------------------------------------- Start Handling Custom Attributes --------------------------------------------------------------------------------- --------------------------------------------------------------------------------- 
+// Tcl Message: Finished Handling Custom Attributes : Time (s): cpu = 00:00:06 ; elapsed = 00:00:05 . Memory (MB): peak = 13653.918 ; gain = 90.918 ; free physical = 2635 ; free virtual = 68550 
+// Tcl Message: --------------------------------------------------------------------------------- --------------------------------------------------------------------------------- 
+// Tcl Message: Finished RTL Optimization Phase 1 : Time (s): cpu = 00:00:06 ; elapsed = 00:00:05 . Memory (MB): peak = 13653.918 ; gain = 90.918 ; free physical = 2635 ; free virtual = 68550 
+// Tcl Message: --------------------------------------------------------------------------------- 
+// TclEventType: ELABORATE_FINISH
+// TclEventType: DESIGN_REFRESH
+// HMemoryUtils.trashcanNow. Engine heap size: 5,849 MB. GUI used memory: 234 MB. Current time: 2/8/26, 12:43:26 AM IST
+// Engine heap size: 5,849 MB. GUI used memory: 236 MB. Current time: 2/8/26, 12:43:26 AM IST
+// TclEventType: READ_XDC_FILE_START
+// TclEventType: READ_XDC_FILE_END
+// TclEventType: FLOORPLAN_MODIFY
+// TclEventType: DESIGN_REFRESH
+// HMemoryUtils.trashcanNow. Engine heap size: 5,780 MB. GUI used memory: 112 MB. Current time: 2/8/26, 12:43:43 AM IST
+// WARNING: HEventQueue.dispatchEvent() is taking  1150 ms.
+// Tcl Message: Netlist sorting complete. Time (s): cpu = 00:00:02 ; elapsed = 00:00:02 . Memory (MB): peak = 13697.863 ; gain = 0.000 ; free physical = 2921 ; free virtual = 68825 
+// Tcl Message: INFO: [Netlist 29-17] Analyzing 576 Unisim elements for replacement INFO: [Netlist 29-28] Unisim Transformation completed in 3 CPU seconds INFO: [Project 1-479] Netlist was created with Vivado 2025.1 INFO: [Project 1-570] Preparing netlist for logic optimization 
+// Tcl Message:  Processing XDC Constraints Initializing timing engine Parsing XDC File [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_user.xdc] Finished Parsing XDC File [/media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/imports/TinyYOLOHW_user.xdc] Completed Processing XDC Constraints  
+// [Engine Memory]: 6,632 MB (+26041kb) [00:52:32]
+// Tcl Message: refresh_design: Time (s): cpu = 00:01:02 ; elapsed = 00:00:29 . Memory (MB): peak = 13717.863 ; gain = 154.863 ; free physical = 2866 ; free virtual = 68792 
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/ag': 29s
+// Elapsed time: 29 seconds
+dismissDialog("Reloading"); // bk (Reloading Progress)
+// Xgd.load filename: /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/./.Xil/Vivado-806865-ubuntu-laptop-hp/xck26_detail.xgd_14091369 elapsed time: 2.4s
+// DeviceModel: Load Xgds SwingWorker Join Forever elapsed time: 2.7s
+selectButton(PAResourceTtoZ.TaskBanner_CLOSE, (String) null); // k (PAResourceTtoZ.TaskBanner_CLOSE)
+closeTask("RTL Analysis", "Elaborated Design", "DesignTask.RTL_PLANNING");
+// TclEventType: HFED_INIT_ROUTE_STORAGE_COMPLETED
+// RouteApi::loadEngineXgdAndInitRouteStorage elapsed time: 2.5s
+selectButton(RDIResource.BaseDialog_OK, "OK", "Confirm Close"); // f (RDIResource.BaseDialog_OK)
+dismissDialog("Confirm Close"); // x (dialog9)
+// TclEventType: DESIGN_CLOSE
+// HMemoryUtils.trashcanNow. Engine heap size: 6,643 MB. GUI used memory: 237 MB. Current time: 2/8/26, 12:43:49 AM IST
+// Engine heap size: 6,635 MB. GUI used memory: 238 MB. Current time: 2/8/26, 12:43:49 AM IST
+// TclEventType: CURR_DESIGN_SET
+// Tcl Message: close_design 
+// TclEventType: CURR_DESIGN_SET
+// TclEventType: DESIGN_CLOSE
+dismissDialog("Close"); // bk (Close Progress)
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.xci)]", 2); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectButton(RDIResource.BaseDialog_CANCEL, "Cancel", "Show IP Hierarchy"); // f (RDIResource.BaseDialog_CANCEL)
+dismissDialog("Show IP Hierarchy"); // x (dialog10)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.xci)]", 2, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.xci)]", 2, false, false, false, false, true, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Popup Trigger
+selectMenu(PAResourceQtoS.SrcMenu_IP_DOCUMENTATION, "IP Documentation"); // am (PAResourceQtoS.SrcMenu_IP_DOCUMENTATION, IP Documentation)
+selectMenu(PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, "Hierarchy Update"); // am (PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, Hierarchy Update)
+selectMenu(PAResourceQtoS.SrcMenu_IP_HIERARCHY, "IP Hierarchy"); // am (PAResourceQtoS.SrcMenu_IP_HIERARCHY, IP Hierarchy)
+selectMenu(PAResourceQtoS.SrcMenu_IP_HIERARCHY, "IP Hierarchy"); // am (PAResourceQtoS.SrcMenu_IP_HIERARCHY, IP Hierarchy)
+selectMenu(PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, "Hierarchy Update"); // am (PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, Hierarchy Update)
+selectMenu(PAResourceQtoS.SrcMenu_IP_DOCUMENTATION, "IP Documentation"); // am (PAResourceQtoS.SrcMenu_IP_DOCUMENTATION, IP Documentation)
+selectMenuItem(PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE, "Generate Output Products..."); // ap (PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE, generate_composite_file_menu)
+// Run Command: PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE
+selectButton(PAResourceQtoS.SimpleOutputProductDialog_GENERATE_OUTPUT_PRODUCTS_IMMEDIATELY, "Generate", "Generate Output Products"); // f (PAResourceQtoS.SimpleOutputProductDialog_GENERATE_OUTPUT_PRODUCTS_IMMEDIATELY)
+// 'bD' command handler elapsed time: 5 seconds
+selectButton("OptionPane.button", "OK", "Generate Output Products"); // JButton (OptionPane.button)
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v)]", 1); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+collapseTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v)]", 1); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+// Run Command: PAResourceCommand.PACommandNames_RECUSTOMIZE_CORE
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v)]", 1); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv)]", 3); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+collapseTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv)]", 3); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+dismissDialog("Re-customize IP"); // C (Re-customize IP Progress)
+selectButton(RDIResource.BaseDialog_CANCEL, "Cancel", "Re-customize IP"); // f (RDIResource.BaseDialog_CANCEL)
+dismissDialog("Re-customize IP"); // m (dialog12)
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv)]", 3); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv)]", 4); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv)]", 5); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : bram_weights_1 (bram_weights_1.xci)]", 7, false, false, false, false, true, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Popup Trigger
+selectMenuItem(PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE, "Generate Output Products..."); // ap (PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE, generate_composite_file_menu)
+// Run Command: PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE
+selectButton(PAResourceQtoS.SimpleOutputProductDialog_GENERATE_OUTPUT_PRODUCTS_IMMEDIATELY, "Generate", "Generate Output Products"); // f (PAResourceQtoS.SimpleOutputProductDialog_GENERATE_OUTPUT_PRODUCTS_IMMEDIATELY)
+// 'bD' command handler elapsed time: 4 seconds
+selectButton("OptionPane.button", "OK", "Generate Output Products"); // JButton (OptionPane.button)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_bias_bram : bram_bias_1 (bram_bias_1.xci)]", 8, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_bias_bram : bram_bias_1 (bram_bias_1.xci)]", 8, false, false, false, false, true, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Popup Trigger
+selectMenuItem(PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE, "Generate Output Products..."); // ap (PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE, generate_composite_file_menu)
+// Run Command: PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE
+selectButton(PAResourceQtoS.SimpleOutputProductDialog_GENERATE_OUTPUT_PRODUCTS_IMMEDIATELY, "Generate", "Generate Output Products"); // f (PAResourceQtoS.SimpleOutputProductDialog_GENERATE_OUTPUT_PRODUCTS_IMMEDIATELY)
+selectButton("OptionPane.button", "OK", "Generate Output Products"); // JButton (OptionPane.button)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v)]", 1, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v)]", 1, true, false, false, false, true, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Popup Trigger - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v)]", 1, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Node
+selectTree(PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, "[, Synthesis, Run Synthesis]", 19, false); // g (PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, Flow Navigator Tree)
+// Run Command: PAResourceCommand.PACommandNames_RUN_SYNTHESIS
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: RUN_MODIFY
+// TclEventType: RUN_RESET
+closeView(PAResourceOtoP.PAViews_PAR_REPORT, "PAR Report"); // c (PAResourceOtoP.PAViews_PAR_REPORT, PlanAheadTabPAR Report)
+// TclEventType: RUN_STATUS_CHANGE
+closeView(PAResourceOtoP.PAViews_PAR_REPORT, "PAR Report"); // c (PAResourceOtoP.PAViews_PAR_REPORT, PlanAheadTabPAR Report)
+// TclEventType: RUN_RESET
+// TclEventType: RUN_MODIFY
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// Tcl Message: reset_run synth_1 
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// HMemoryUtils.trashcanNow. Engine heap size: 5,954 MB. GUI used memory: 118 MB. Current time: 2/8/26, 12:44:39 AM IST
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: RUN_LAUNCH
+// TclEventType: RUN_MODIFY
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// Tcl Message: launch_runs synth_1 -jobs 8 
+// Tcl Message: INFO: [Vivado 12-4149] The synthesis checkpoint for IP '/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci' is already up-to-date INFO: [Vivado 12-4149] The synthesis checkpoint for IP '/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci' is already up-to-date INFO: [Vivado 12-4149] The synthesis checkpoint for IP '/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_weights_1/bram_weights_1.xci' is already up-to-date 
+// Tcl Message: [Sun Feb  8 00:44:39 2026] Launched synth_1... Run output will be captured here: /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.runs/synth_1/runme.log 
+dismissDialog("Starting Design Runs"); // bk (Starting Design Runs Progress)
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: FILE_SET_CHANGE
+// WARNING: HTimer (FileMgr Design Graph Update Timer) is taking 900ms to process. Increasing delay to 3000 ms.
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 56m:31s
+// TclEventType: DG_GRAPH_GENERATED
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 56m:35s
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_STEP_COMPLETED
+// Elapsed time: 344 seconds
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : bram_weights_1 (bram_weights_1.xci)]", 7, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : bram_weights_1 (bram_weights_1.xci)]", 7, false, false, false, false, true, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Popup Trigger
+selectMenuItem(PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE, "Generate Output Products..."); // ap (PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE, generate_composite_file_menu)
+// Run Command: PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE
+selectRadioButton(PAResourceQtoS.SimpleOutputProductDialog_SYNTHESIZE_DESIGN_GLOBALLY, "Global"); // a (PAResourceQtoS.SimpleOutputProductDialog_SYNTHESIZE_DESIGN_GLOBALLY)
+selectButton(PAResourceQtoS.SimpleOutputProductDialog_APPLY_OPTIONS_AND_DISMISS_DIALOG_WITHOUT, "Apply", "Generate Output Products"); // f (PAResourceQtoS.SimpleOutputProductDialog_APPLY_OPTIONS_AND_DISMISS_DIALOG_WITHOUT)
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// Tcl Message: set_property generate_synth_checkpoint false [get_files  /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_weights_1/bram_weights_1.xci] 
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: FILESET_UPDATE_IP
+// TclEventType: PROJ_DESIGN_MODE_SET
+dismissDialog("Apply Synthesis Option"); // bk (Apply Synthesis Option Progress)
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: DG_GRAPH_GENERATED
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 59m:11s
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 59m:14s
+selectButton(PAResourceQtoS.SimpleOutputProductDialog_GENERATE_OUTPUT_PRODUCTS_IMMEDIATELY, "Generate", "Generate Output Products"); // f (PAResourceQtoS.SimpleOutputProductDialog_GENERATE_OUTPUT_PRODUCTS_IMMEDIATELY)
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// Tcl Message: generate_target all [get_files  /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_weights_1/bram_weights_1.xci] 
+// Tcl Message: INFO: [IP_Flow 19-1686] Generating 'Instantiation Template' target for IP 'bram_weights_1'... INFO: [IP_Flow 19-1686] Generating 'Synthesis' target for IP 'bram_weights_1'... 
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// Tcl Message: INFO: [IP_Flow 19-1686] Generating 'Simulation' target for IP 'bram_weights_1'... INFO: [IP_Flow 19-1686] Generating 'Miscellaneous' target for IP 'bram_weights_1'... INFO: [IP_Flow 19-1686] Generating 'Change Log' target for IP 'bram_weights_1'... 
+// Tcl Message: export_ip_user_files -of_objects [get_files /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_weights_1/bram_weights_1.xci] -no_script -sync -force -quiet 
+// TclEventType: PROJECT_CHANGE
+// TclEventType: DG_GRAPH_GENERATED
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// 'bD' command handler elapsed time: 14 seconds
+selectButton("OptionPane.button", "OK", "Generate Output Products"); // JButton (OptionPane.button)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_bias_bram : bram_bias_1 (bram_bias_1.xci)]", 8, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_bias_bram : bram_bias_1 (bram_bias_1.xci)]", 8, false, false, false, false, true, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Popup Trigger
+selectMenuItem(PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE, "Generate Output Products..."); // ap (PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE, generate_composite_file_menu)
+// Run Command: PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 59m:26s
+selectRadioButton(PAResourceQtoS.SimpleOutputProductDialog_SYNTHESIZE_DESIGN_GLOBALLY, "Global"); // a (PAResourceQtoS.SimpleOutputProductDialog_SYNTHESIZE_DESIGN_GLOBALLY)
+selectButton(PAResourceQtoS.SimpleOutputProductDialog_APPLY_OPTIONS_AND_DISMISS_DIALOG_WITHOUT, "Apply", "Generate Output Products"); // f (PAResourceQtoS.SimpleOutputProductDialog_APPLY_OPTIONS_AND_DISMISS_DIALOG_WITHOUT)
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: FILESET_UPDATE_IP
+// TclEventType: PROJ_DESIGN_MODE_SET
+selectButton(PAResourceQtoS.SimpleOutputProductDialog_GENERATE_OUTPUT_PRODUCTS_IMMEDIATELY, "Generate", "Generate Output Products"); // f (PAResourceQtoS.SimpleOutputProductDialog_GENERATE_OUTPUT_PRODUCTS_IMMEDIATELY)
+// Tcl Message: set_property generate_synth_checkpoint false [get_files  /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci] 
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// Tcl Message: generate_target all [get_files  /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci] 
+// Tcl Message: INFO: [IP_Flow 19-1686] Generating 'Instantiation Template' target for IP 'bram_bias_1'... INFO: [IP_Flow 19-1686] Generating 'Synthesis' target for IP 'bram_bias_1'... INFO: [IP_Flow 19-1686] Generating 'Simulation' target for IP 'bram_bias_1'... INFO: [IP_Flow 19-1686] Generating 'Miscellaneous' target for IP 'bram_bias_1'... INFO: [IP_Flow 19-1686] Generating 'Change Log' target for IP 'bram_bias_1'... 
+// Tcl Message: export_ip_user_files -of_objects [get_files /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/bram_bias_1/bram_bias_1.xci] -no_script -sync -force -quiet 
+// TclEventType: PROJECT_CHANGE
+// TclEventType: DG_GRAPH_GENERATED
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: FILE_SET_CHANGE
+// 'bD' command handler elapsed time: 15 seconds
+// Elapsed time: 11 seconds
+selectButton("OptionPane.button", "OK", "Generate Output Products"); // JButton (OptionPane.button)
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 59m:41s
+selectTree(PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, "[, Synthesis, Run Synthesis]", 16, false); // g (PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, Flow Navigator Tree)
+// Run Command: PAResourceCommand.PACommandNames_RUN_SYNTHESIS
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: RUN_MODIFY
+// TclEventType: RUN_RESET
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_RESET
+// TclEventType: RUN_MODIFY
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// Tcl Message: reset_run synth_1 
+// HMemoryUtils.trashcanNow. Engine heap size: 5,871 MB. GUI used memory: 126 MB. Current time: 2/8/26, 12:51:05 AM IST
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: RUN_LAUNCH
+// TclEventType: RUN_MODIFY
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// Tcl Message: launch_runs synth_1 -jobs 8 
+// Tcl Message: INFO: [Vivado 12-4149] The synthesis checkpoint for IP '/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci' is already up-to-date 
+// Tcl Message: [Sun Feb  8 00:51:05 2026] Launched synth_1... Run output will be captured here: /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.runs/synth_1/runme.log 
+dismissDialog("Starting Design Runs"); // bk (Starting Design Runs Progress)
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_STEP_COMPLETED
+// Elapsed time: 315 seconds
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : bram_weights_1 (bram_weights_1.xci)]", 7, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_weight_bram : bram_weights_1 (bram_weights_1.xci)]", 7, false, false, false, false, true, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Popup Trigger
+selectMenu(PAResourceQtoS.SrcMenu_IP_DOCUMENTATION, "IP Documentation"); // am (PAResourceQtoS.SrcMenu_IP_DOCUMENTATION, IP Documentation)
+// Elapsed time: 83 seconds
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.xci)]", 205); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectButton(RDIResource.BaseDialog_OK, "OK", "Show IP Hierarchy"); // f (RDIResource.BaseDialog_OK)
+// TclEventType: DG_GRAPH_STALE
+dismissDialog("Show IP Hierarchy"); // x (dialog17)
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 01h:06m:32s
+// TclEventType: DG_GRAPH_GENERATED
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 01h:06m:35s
+// Elapsed time: 18 seconds
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), gen_engines[0].i_conv : conv_3x3 (conv_3x3.sv)]", 12); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), gen_engines[1].i_conv : conv_3x3 (conv_3x3.sv)]", 24); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), gen_engines[41].i_conv : conv_3x3 (conv_3x3.sv)]", 153); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectButton(PAResourceEtoH.FileSetPanel_MESSAGES, "3"); // h (PAResourceEtoH.FileSetPanel_MESSAGES)
+selectButton(PAResourceEtoH.FileSetPanel_MESSAGES, "3"); // h (PAResourceEtoH.FileSetPanel_MESSAGES)
+selectButton(PAResourceEtoH.FileSetPanel_MESSAGES, "3"); // h (PAResourceEtoH.FileSetPanel_MESSAGES)
+// Run Command: PAResourceCommand.PACommandNames_RECUSTOMIZE_CORE
+// WARNING: HEventQueue.dispatchEvent() is taking  1031 ms.
+// Elapsed time: 107 seconds
+dismissDialog("Re-customize IP"); // C (Re-customize IP Progress)
+dismissDialog("Re-customize IP"); // m (dialog18)
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_window : kernelWindow (kernel_window.sv)]", 10); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_window : kernelWindow (kernel_window.sv), LineBuffer1 : lineBuffer (line_buffer.sv)]", 11, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), i_window : kernelWindow (kernel_window.sv), LineBuffer1 : lineBuffer (line_buffer.sv)]", 11, false, false, false, false, false, true); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Double Click
+// Elapsed time: 156 seconds
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), gen_engines[1].i_conv : conv_3x3 (conv_3x3.sv), gen_dsps[0].i_dsp : dsp_wrap_int8 (dsp_wrap_int8.sv)]", 27); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), gen_engines[1].i_conv : conv_3x3 (conv_3x3.sv), gen_dsps[0].i_dsp : dsp_wrap_int8 (dsp_wrap_int8.sv), i_mult_add : mult_gen_0 (mult_gen_0.xci)]", 28); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectButton(RDIResource.BaseDialog_CANCEL, "Cancel", "Show IP Hierarchy"); // f (RDIResource.BaseDialog_CANCEL)
+dismissDialog("Show IP Hierarchy"); // x (dialog19)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), gen_engines[1].i_conv : conv_3x3 (conv_3x3.sv), gen_dsps[0].i_dsp : dsp_wrap_int8 (dsp_wrap_int8.sv), i_mult_add : mult_gen_0 (mult_gen_0.xci)]", 28, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), gen_engines[1].i_conv : conv_3x3 (conv_3x3.sv), gen_dsps[0].i_dsp : dsp_wrap_int8 (dsp_wrap_int8.sv), i_mult_add : mult_gen_0 (mult_gen_0.xci)]", 28, false, false, false, false, true, false); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE) - Popup Trigger
+selectMenu(PAResourceQtoS.SrcMenu_IP_DOCUMENTATION, "IP Documentation"); // am (PAResourceQtoS.SrcMenu_IP_DOCUMENTATION, IP Documentation)
+selectMenu(PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, "Hierarchy Update"); // am (PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, Hierarchy Update)
+selectMenu(PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, "Hierarchy Update"); // am (PAResourceCommand.PACommandNames_AUTO_UPDATE_HIER, Hierarchy Update)
+selectMenu(PAResourceQtoS.SrcMenu_IP_DOCUMENTATION, "IP Documentation"); // am (PAResourceQtoS.SrcMenu_IP_DOCUMENTATION, IP Documentation)
+selectMenuItem(PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE, "Generate Output Products..."); // ap (PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE, generate_composite_file_menu)
+// Run Command: PAResourceCommand.PACommandNames_GENERATE_COMPOSITE_FILE
+selectRadioButton(PAResourceQtoS.SimpleOutputProductDialog_SYNTHESIZE_DESIGN_GLOBALLY, "Global"); // a (PAResourceQtoS.SimpleOutputProductDialog_SYNTHESIZE_DESIGN_GLOBALLY)
+selectButton(PAResourceQtoS.SimpleOutputProductDialog_GENERATE_OUTPUT_PRODUCTS_IMMEDIATELY, "Generate", "Generate Output Products"); // f (PAResourceQtoS.SimpleOutputProductDialog_GENERATE_OUTPUT_PRODUCTS_IMMEDIATELY)
+// TclEventType: DG_GRAPH_STALE
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: FILESET_UPDATE_IP
+// TclEventType: PROJ_DESIGN_MODE_SET
+// Tcl Message: set_property generate_synth_checkpoint false [get_files  /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci] 
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: COMPOSITE_FILE_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// Tcl Message: generate_target all [get_files  /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci] 
+// Tcl Message: INFO: [IP_Flow 19-1686] Generating 'Instantiation Template' target for IP 'mult_gen_0'... INFO: [IP_Flow 19-1686] Generating 'Synthesis' target for IP 'mult_gen_0'... INFO: [IP_Flow 19-1686] Generating 'Simulation' target for IP 'mult_gen_0'... INFO: [IP_Flow 19-1686] Generating 'Change Log' target for IP 'mult_gen_0'... 
+// Tcl Message: export_ip_user_files -of_objects [get_files /media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.srcs/sources_1/ip/mult_gen_0/mult_gen_0.xci] -no_script -sync -force -quiet 
+// TclEventType: PROJECT_CHANGE
+// TclEventType: DG_GRAPH_GENERATED
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PACKAGER_MESSAGE_RESET
+// TclEventType: PACKAGER_UNLOAD_CORE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: FILE_SET_CHANGE
+// 'bD' command handler elapsed time: 8 seconds
+selectButton("OptionPane.button", "OK", "Generate Output Products"); // JButton (OptionPane.button)
+// Elapsed Time for: 'PAResourceItoN.MsgLongTask_MESSAGE_LONG_TASK/L.f': 01h:11m:56s
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), gen_engines[1].i_conv : conv_3x3 (conv_3x3.sv), gen_dsps[1].i_dsp : dsp_wrap_int8 (dsp_wrap_int8.sv)]", 29); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, TinyYOLOHW (TinyYOLOHW.v), inst_example : TinyYOLOHW_example (TinyYOLOHW_example.sv), inst_example_vadd__axi_in_to_axi_out : TinyYOLOHW_example_vadd_axis (TinyYOLOHW_example_vadd_axis.sv), inst_compute_engine : TinyYoloComputeUnit (compute_kernel_top.sv), gen_engines[1].i_conv : conv_3x3 (conv_3x3.sv), gen_dsps[2].i_dsp : dsp_wrap_int8 (dsp_wrap_int8.sv)]", 31); // E (PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE)
+selectTree(PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, "[, Synthesis, Run Synthesis]", 16, false); // g (PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, Flow Navigator Tree)
+// Run Command: PAResourceCommand.PACommandNames_RUN_SYNTHESIS
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: RUN_MODIFY
+// TclEventType: RUN_RESET
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_RESET
+// TclEventType: RUN_MODIFY
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// Tcl Message: reset_run synth_1 
+// HMemoryUtils.trashcanNow. Engine heap size: 5,980 MB. GUI used memory: 132 MB. Current time: 2/8/26, 1:03:19 AM IST
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// TclEventType: RUN_LAUNCH
+// TclEventType: RUN_MODIFY
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: PAUSE_COMPOSITE_FILE_CHANGE_GUI
+// Tcl Message: launch_runs synth_1 -jobs 8 
+// Tcl Message: [Sun Feb  8 01:03:20 2026] Launched synth_1... Run output will be captured here: /media/ubuntu/T7/projects/arm-bharat/TinyYOLOHW_ex/TinyYOLOHW_ex.runs/synth_1/runme.log 
+dismissDialog("Starting Design Runs"); // bk (Starting Design Runs Progress)
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_STEP_COMPLETED
+// WARNING: HSwingWorker (Update Runs Swing Worker) is taking 1570 ms. Increasing delay to 3000 ms.

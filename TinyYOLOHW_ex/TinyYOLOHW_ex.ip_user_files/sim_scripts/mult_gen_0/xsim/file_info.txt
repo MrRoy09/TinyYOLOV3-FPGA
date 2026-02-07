@@ -1,0 +1,2 @@
+mult_gen_0.vhd,vhdl,xil_defaultlib,../../../../../Tiny_YOLO_HW/Tiny_YOLO_HW.gen/sources_1/ip/mult_gen_0/sim/mult_gen_0.vhd,incdir="../../../../../../../Xilinx-tools/2025.1/data/rsb/busdef"
+glbl.v,Verilog,xil_defaultlib,glbl.v
