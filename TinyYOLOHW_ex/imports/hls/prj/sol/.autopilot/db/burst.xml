@@ -1,4 +1,0 @@
-<VitisHLS:BurstInfo>
-    <burst group="BURST_VERBOSE_MISSED" fe_name="CouldNotAnalyzeBoundsPatternMissed" src_info="../TinyYOLOHW_cmodel.cpp:96:21" msg_id="214-252" msg_severity="INFO" msg_body="Could not analyze the loop bounds" resolution="214-252" LoopLoc="../TinyYOLOHW_cmodel.cpp:96:21" LoopName="VITIS_LOOP_96_1" ParentFunc="TinyYOLOHW"/>
-</VitisHLS:BurstInfo>
-

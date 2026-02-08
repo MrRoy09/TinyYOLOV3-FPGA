@@ -1,2 +1,0 @@
-TinyYOLOHW_sim_netlist.v,verilog,xil_defaultlib,/media/ubuntu/T7/projects/arm-bharat/Tiny_YOLO_HW/Tiny_YOLO_HW.gen/sources_1/ip/TinyYOLOHW/TinyYOLOHW_sim_netlist.v,incdir="../../../../../../../Xilinx-tools/2025.1/data/rsb/busdef"
-glbl.v,Verilog,xil_defaultlib,glbl.v

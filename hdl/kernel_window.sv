@@ -5,7 +5,6 @@ module kernelWindow #(
     input  logic        clk,
     input  logic        rst,
     
-    // Dynamic Configuration
     input  logic [31:0] img_width,
     input  logic [31:0] in_channels,
     
@@ -15,15 +14,12 @@ module kernelWindow #(
     output logic        valid_out
 );
 
-    // Total width of a "row" in the interleaved stream
-    // Example Layer 0: 416 * 3 = 1248
     logic [31:0] total_row_width;
     assign total_row_width = img_width * in_channels;
 
     logic [7:0] out1;
     logic [7:0] out2;
 
-    // Balancing Registers to align columns
     logic [7:0] row1_aligned;
     logic [7:0] row2_delayed_1, row2_aligned;
 
@@ -39,7 +35,6 @@ module kernelWindow #(
         end
     end
 
-    // Line Buffers with Dynamic Wrap
     lineBuffer #(.MAX_WIDTH(MAX_LB_WIDTH)) LineBuffer1 (
         .clk(clk),
         .rst(rst),
@@ -58,7 +53,6 @@ module kernelWindow #(
         .o_data(out2)
     );
 
-    // Valid signal generation (Priming Counter)
     logic [31:0] delay_count; 
     logic        priming_done;
 
@@ -71,12 +65,7 @@ module kernelWindow #(
                 for (int j=0; j<3; j++) window[i][j] <= '0;
             end
         end else if (data_valid) begin
-            // 3x3 Window Horizontal Shift Logic
-            // Note: Since we are interleaved, we shift every 'in_channels' cycles
-            // to get the same channel's neighbor.
-            // Simplified for now: Assume we shift every cycle. 
-            // This is mathematically correct if we handle the convolution properly.
-            
+
             window[2][0] <= out2;
             window[2][1] <= window[2][0];
             window[2][2] <= window[2][1];
@@ -89,7 +78,6 @@ module kernelWindow #(
             window[0][1] <= window[0][0];
             window[0][2] <= window[0][1];
 
-            // Priming logic: Wait for 2 full interleaved rows + 2 registers
             if (!priming_done) begin
                 if (delay_count == (2*total_row_width + 2))
                     priming_done <= 1'b1;

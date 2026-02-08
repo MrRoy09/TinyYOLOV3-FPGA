@@ -1,1 +1,0 @@
-vopt -64 -l elaborate.log +acc=npr -suppress 10016  -L xil_defaultlib -L xbip_utils_v3_0_14 -L mult_gen_v12_0_23 -L xbip_dsp48_wrapper_v3_0_7 -L xbip_pipe_v3_0_10 -L xbip_multadd_v3_0_22 -L secureip -work xil_defaultlib xil_defaultlib.mult_gen_0 -o mult_gen_0_opt

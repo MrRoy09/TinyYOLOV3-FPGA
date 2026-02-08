@@ -1,8 +1,0 @@
-sv xil_defaultlib -i "../../../../../../../Xilinx-tools/2025.1/data/rsb/busdef" --include "/media/ubuntu/T7/Xilinx-tools/2025.1/Vivado/data/xilinx_vip/include" --include "../../../ipstatic/hdl" \
-"../../../../TinyYOLOHW_ex.gen/sources_1/ip/control_TinyYOLOHW_vip/sim/control_TinyYOLOHW_vip_pkg.sv" \
-"../../../../TinyYOLOHW_ex.gen/sources_1/ip/control_TinyYOLOHW_vip/sim/control_TinyYOLOHW_vip.sv" \
-
-verilog xil_defaultlib "glbl.v"
-
-# Do not sort compile order
-nosort

@@ -16,7 +16,6 @@ module conv_3x3 #()
     logic [31:0] l2_sum [0:2];
     logic [31:0] l3_sum [0:1];
     
-    // Valid Signal Pipeline 
     // Latencies: 2 (BRAM) + 3 (DSP) + 4 (Tree) = 9 cycles total
     logic [8:0] valid_pipe;
 
@@ -25,7 +24,6 @@ module conv_3x3 #()
         else     valid_pipe <= {valid_pipe[7:0], valid_in};
     end
 
-    // The output valid signal must align with the final 'out' result (Cycle 9)
     assign data_valid = valid_pipe[8];
 
     // 1. DSP Multipliers (Latency: 3 cycles)
