@@ -1,4 +1,4 @@
-module delay_line #(
+module delayLine #(
     parameter WIDTH = 64,
     parameter MAX_DEPTH = 128
 )(
