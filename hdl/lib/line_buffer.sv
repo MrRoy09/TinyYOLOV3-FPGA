@@ -4,14 +4,14 @@ module lineBuffer #(
     input  logic        clk,
     input  logic        rst,
     input  logic [31:0] curr_width, // Dynamic reset point (e.g., width * channels)
-    input  logic [7:0]  pixel,
+    input  logic [63:0]  pixel,
     input  logic        data_valid,
-    output logic [7:0]  o_data
+    output logic [63:0]  o_data
 );
 
     // Attribute to force Block RAM implementation
     (* ram_style = "block" *) 
-    logic [7:0] line [MAX_WIDTH-1:0]; 
+    logic [63:0] line [MAX_WIDTH-1:0]; 
 
     // Pointer width must match MAX_WIDTH
     logic [$clog2(MAX_WIDTH)-1:0] wrPtr; 

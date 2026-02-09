@@ -8,9 +8,9 @@ module kernelWindow #(
     input  logic [31:0] img_width,
     input  logic [31:0] in_channels,
     
-    input  logic [7:0]  pixel_in,
+    input  logic [63:0]  pixel_in,
     input  logic        data_valid,
-    output logic [7:0]  window [0:2][0:2],
+    output logic [63:0]  window [0:2][0:2],
     output logic        valid_out
 );
 
