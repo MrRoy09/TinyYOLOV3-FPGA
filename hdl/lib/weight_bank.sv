@@ -3,7 +3,6 @@ module weight_bank #(
     parameter ADDR_WIDTH = $clog2(DEPTH)
 )
 (   
-
     input logic clk,
     input logic rst,
 
@@ -19,7 +18,7 @@ module weight_bank #(
 
 logic [71:0] bank_data[0:7];
 
-genvar i;
+genvar i, pos, ch;
 
 generate
     for(i=0;i<8;i++) begin : uram_gen
@@ -39,10 +38,11 @@ generate
                 rdata_pipe[1] <= '0;
                 rdata_pipe[2] <= '0;
             end else begin
-                if (ren[i])
+                if (ren[i]) begin
                     rdata_pipe[0] <= memory[raddr];
                     rdata_pipe[1] <= rdata_pipe[0];
                     rdata_pipe[2] <= rdata_pipe[1];
+                end
             end
         end
 
@@ -51,7 +51,10 @@ generate
     end    
 endgenerate
 
-assign rdata = {bank_data[7], bank_data[6], bank_data[5], bank_data[4],
-                bank_data[3], bank_data[2], bank_data[1], bank_data[0]};
+for (pos = 0; pos < 9; pos++) begin : pos_map
+    for (ch = 0; ch < 8; ch++) begin : ch_map
+        assign rdata[(pos*64 + ch*8) +: 8] = bank_data[ch][(pos*8) +: 8];
+    end
+end
 
 endmodule
