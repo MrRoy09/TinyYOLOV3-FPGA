@@ -40,9 +40,9 @@ generate
             end else begin
                 if (ren[i]) begin
                     rdata_pipe[0] <= memory[raddr];
-                    rdata_pipe[1] <= rdata_pipe[0];
-                    rdata_pipe[2] <= rdata_pipe[1];
                 end
+                rdata_pipe[1] <= rdata_pipe[0];
+                rdata_pipe[2] <= rdata_pipe[1];
             end
         end
 

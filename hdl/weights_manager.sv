@@ -40,12 +40,11 @@ always_ff @(posedge clk) begin
         write_complete <= 0;
     end else if (write_mode) begin
         if (data_valid) begin
-            if (write_ch_cnt >= (cfg_ci_groups << 3) - 1) begin
+            if (write_ch_cnt >= (13'(cfg_ci_groups) << 3) - 13'd1) begin
                 write_ch_cnt <= 0;
-                if (write_f_cnt >= (cfg_co_groups << 3) - 1) begin
+                if (write_f_cnt >= (13'(cfg_co_groups) << 3) - 13'd1) begin
                     write_f_cnt    <= 0;
-                    write_complete <= 1;
-                    $display("[%0t] WM DEBUG: Write sequence complete. Filters: %0d, Channels: %0d", $time, write_f_cnt + 1, write_ch_cnt + 1);
+                    write_complete <= 1'b1;
                 end else begin
                     write_f_cnt <= write_f_cnt + 1;
                 end
