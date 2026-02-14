@@ -1,5 +1,5 @@
 module weight_bank #(
-    parameter DEPTH = 1024,
+    parameter DEPTH = 4096,
     parameter ADDR_WIDTH = $clog2(DEPTH)
 )
 (   

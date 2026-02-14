@@ -35,7 +35,11 @@ module tb_weight_bank;
 
     // Helper to extract a 72-bit bank slice from rdata
     function logic [71:0] get_bank(input int idx);
-        return rdata[idx*72 +: 72];
+        logic [71:0] res;
+        for (int p = 0; p < 9; p++) begin
+            res[p*8 +: 8] = rdata[(p*64 + idx*8) +: 8];
+        end
+        return res;
     endfunction
 
     // Helper tasks
@@ -95,10 +99,11 @@ module tb_weight_bank;
         raddr = 0;
         set_all_ren(1);
         @(posedge clk);
-        set_all_ren(0);
 
         // Wait for 3-stage read pipeline
         repeat(3) @(posedge clk);
+        set_all_ren(0);
+
 
         for (int i = 0; i < 8; i++)
             check_bank(i, 72'hAA_BBCCDDEE_FF001122);
@@ -122,9 +127,9 @@ module tb_weight_bank;
         raddr = 1;
         set_all_ren(1);
         @(posedge clk);
-        set_all_ren(0);
 
         repeat(3) @(posedge clk);
+        set_all_ren(0);
 
         for (int i = 0; i < 8; i++)
             check_bank(i, 72'h10 * (i + 1));
@@ -146,9 +151,9 @@ module tb_weight_bank;
         set_all_ren(0);
         ren[0] = 1;
         @(posedge clk);
-        ren[0] = 0;
 
         repeat(3) @(posedge clk);
+        ren[0] = 0;
 
         check_bank(0, 72'hAA_BBCCDDEE_FF001122);
 
@@ -178,8 +183,8 @@ module tb_weight_bank;
         raddr = 5;
         set_all_ren(1);
         @(posedge clk);
-        set_all_ren(0);
         repeat(3) @(posedge clk);
+        set_all_ren(0);
 
         $display("  addr 5:");
         for (int i = 0; i < 8; i++)
@@ -190,8 +195,8 @@ module tb_weight_bank;
         raddr = 10;
         set_all_ren(1);
         @(posedge clk);
-        set_all_ren(0);
         repeat(3) @(posedge clk);
+        set_all_ren(0);
 
         $display("  addr 10:");
         for (int i = 0; i < 8; i++)
