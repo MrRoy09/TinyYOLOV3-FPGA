@@ -24,6 +24,7 @@ module tb_weight_manager;
     localparam COUT = 128;
     localparam CI_GROUPS = CIN / 8;
     localparam CO_GROUPS = COUT / 8;
+    localparam TOTAL_GROUPS = CI_GROUPS * CO_GROUPS;
 
     weight_manager #(
         .DEPTH(DEPTH)
@@ -87,49 +88,63 @@ module tb_weight_manager;
         write_mode <= 0;
         #100;
 
-        $display("[%0t] Starting Read and Verify", $time);
-        for (int og = 0; og < CO_GROUPS; og++) begin
-            for (int ig = 0; ig < CI_GROUPS; ig++) begin
-                if (ig == 0 && og % 4 == 0) $display("[%0t] Verifying Filter Group %0d...", $time, og);
-                
-                @(posedge clk);
-                read_en <= 1;
-                @(posedge clk);
-                read_en <= 0; 
-                
-                // Wait for data_ready (3 cycles latency)
-                repeat(2) @(posedge clk);
-                if (!data_ready) wait(data_ready);
+        $display("[%0t] Starting CONTINUOUS Read and Verify", $time);
+        
+        // Assert read_en and keep it high for the whole sequence
+        @(posedge clk);
+        read_en <= 1;
 
-                // Verify each of the 8 filters in the group
-                for (int f_off = 0; f_off < 8; f_off++) begin
-                    int f_idx = og * 8 + f_off;
-                    logic [575:0] actual = data_out[f_off];
-                    logic [575:0] expected;
-                    
-                    // Reconstruct expected 576-bit value from shadow memory
-                    for (int pos = 0; pos < 9; pos++) begin
-                        for (int c_off = 0; c_off < 8; c_off++) begin
-                            int c_idx = ig * 8 + c_off;
-                            expected[(pos*64 + c_off*8) +: 8] = shadow_mem[f_idx][c_idx][(pos*8) +: 8];
-                        end
+        // Verify each group as it streams out
+        for (int g = 0; g < TOTAL_GROUPS; g++) begin
+            int og = g / CI_GROUPS;
+            int ig = g % CI_GROUPS;
+
+            // Wait for data_ready to align with the first group (latency is 3 cycles)
+            if (g == 0) begin
+                while (!data_ready) @(posedge clk);
+            end else begin
+                @(posedge clk);
+            end
+
+            // Verify each of the 8 filters in the group
+            for (int f_off = 0; f_off < 8; f_off++) begin
+                int f_idx = og * 8 + f_off;
+                logic [575:0] actual = data_out[f_off];
+                logic [575:0] expected;
+                
+                // Reconstruct expected 576-bit value from shadow memory
+                for (int pos = 0; pos < 9; pos++) begin
+                    for (int c_off = 0; c_off < 8; c_off++) begin
+                        int c_idx = ig * 8 + c_off;
+                        expected[(pos*64 + c_off*8) +: 8] = shadow_mem[f_idx][c_idx][(pos*8) +: 8];
                     end
+                end
 
-                    if (actual !== expected) begin
-                        $display("[%0t] MISMATCH: Filter %0d, Channel Group %0d", $time, f_idx, ig);
-                        // Detailed byte-level mismatch for debugging
-                        for (int b = 0; b < 72; b++) begin
-                            if (actual[b*8 +: 8] !== expected[b*8 +: 8]) begin
-                                $display("  Byte %0d mismatch: exp=%h got=%h", b, expected[b*8 +: 8], actual[b*8 +: 8]);
-                            end
+                if (actual !== expected) begin
+                    $display("[%0t] MISMATCH: Group %0d (Filter %0d, Channel Group %0d)", $time, g, f_idx, ig);
+                    // Detailed byte-level mismatch for debugging
+                    for (int b = 0; b < 72; b++) begin
+                        if (actual[b*8 +: 8] !== expected[b*8 +: 8]) begin
+                            $display("  Byte %0d mismatch: exp=%h got=%h", b, expected[b*8 +: 8], actual[b*8 +: 8]);
                         end
                     end
                 end
             end
         end
 
-        wait(read_complete);
-        $display("[%0t] Simulation complete SUCCESS", $time);
+        // Sequence finishes, stop read_en
+        @(posedge clk);
+        read_en <= 0;
+
+        // Verify read_complete pulse
+        if (!read_complete) begin
+            $display("[%0t] Waiting for read_complete...", $time);
+            while(!read_complete) @(posedge clk);
+        end
+        $display("[%0t] read_complete ASSERTED.", $time);
+
+        #100;
+        $display("[%0t] Continuous stream simulation complete SUCCESS", $time);
         $finish;
     end
 
