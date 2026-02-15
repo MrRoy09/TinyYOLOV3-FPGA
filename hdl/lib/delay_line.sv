@@ -19,11 +19,17 @@ always_ff @(posedge clk) begin
         dout <= '0;
         ptr <= '0;
     end else if(en) begin
-        dout <= mem[ptr];
-        mem[ptr] <= din;
-        
-        if(ptr >= delay_depth - 1) ptr <= '0;
-        else ptr <= ptr + 1'b1;
+        if(delay_depth <= 1) begin
+            // Bypass memory: just a register = 1 cycle delay
+            dout <= din;
+        end else begin
+            // Buffer of (delay_depth-1) entries + registered output = delay_depth total
+            dout <= mem[ptr];
+            mem[ptr] <= din;
+
+            if(ptr >= delay_depth - 2) ptr <= '0;
+            else ptr <= ptr + 1'b1;
+        end
     end
 end
 

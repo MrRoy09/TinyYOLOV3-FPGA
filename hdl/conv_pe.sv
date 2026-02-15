@@ -22,14 +22,25 @@ logic [31:0] bias_pipe [0:2];
 logic signed [31:0] acc;
 
 always_ff @(posedge clk) begin
-    valid_pipe <= {valid_pipe[1:0] , valid_in};
-    lastc_pipe <= {lastc_pipe[1:0] , last_channel};
+    if (rst) begin
+        valid_pipe <= '0;
+        lastc_pipe <= '0;
+    end else begin
+        valid_pipe <= {valid_pipe[1:0] , valid_in};
+        lastc_pipe <= {lastc_pipe[1:0] , last_channel};
+    end
 end
 
 always_ff @(posedge clk) begin
-    bias_pipe[0] <= bias;
-    bias_pipe[1] <= bias_pipe[0];
-    bias_pipe[2] <= bias_pipe[1];
+    if (rst) begin
+        bias_pipe[0] <= '0;
+        bias_pipe[1] <= '0;
+        bias_pipe[2] <= '0;
+    end else begin
+        bias_pipe[0] <= bias;
+        bias_pipe[1] <= bias_pipe[0];
+        bias_pipe[2] <= bias_pipe[1];
+    end
 end
 
 always_ff @(posedge clk) begin

@@ -22,9 +22,9 @@ always_ff @(posedge clk) begin
     if(rst) begin
         mult_result <= '0;
         shifted_result <= '0;
+        relu_result <= '0;
         data_out <= '0;
         valid_pipe <= '0;
-        valid_out <= '0;
         use_relu_pipe <= '0;
 
     end else begin

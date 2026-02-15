@@ -10,27 +10,30 @@ module lineBuffer #(
 );
 
     // Attribute to force Block RAM implementation
-    (* ram_style = "block" *) 
-    logic [63:0] line [MAX_WIDTH-1:0]; 
+    (* ram_style = "block" *)
+    logic [63:0] line [MAX_WIDTH-1:0];
 
     // Pointer width must match MAX_WIDTH
-    logic [$clog2(MAX_WIDTH)-1:0] wrPtr; 
+    logic [$clog2(MAX_WIDTH)-1:0] wrPtr;
 
     always_ff @(posedge clk) begin
         if (rst) begin
             wrPtr  <= '0;
             o_data <= '0;
         end else if (data_valid) begin
-            // Read old pixel (from previous row)
-            o_data <= line[wrPtr];
-            // Store new pixel (for next row)
-            line[wrPtr] <= pixel;
-            
-            // Pointer increment with dynamic wrap-around
-            if (wrPtr >= curr_width - 1) 
-                wrPtr <= '0;
-            else 
-                wrPtr <= wrPtr + 1'b1;
+            if (curr_width <= 1) begin
+                // Bypass: just a register = 1 cycle delay
+                o_data <= pixel;
+            end else begin
+                // Buffer of (curr_width-1) entries + registered output = curr_width total
+                o_data <= line[wrPtr];
+                line[wrPtr] <= pixel;
+
+                if (wrPtr >= curr_width - 2)
+                    wrPtr <= '0;
+                else
+                    wrPtr <= wrPtr + 1'b1;
+            end
         end
     end
 
