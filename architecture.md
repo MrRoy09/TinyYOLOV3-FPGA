@@ -89,8 +89,13 @@ To balance the **128-bit AXI Bus** of the KV260 and the available **DSP** resour
 
 ### 1. Input DMA + NHWC Line Buffer
 Processes data as a stream of **64-bit vectors**.
-- **Line Buffer:** Stores $W \times (C_{in}/8)$ vectors. 
+- **Line Buffer:** Stores $W \times (C_{in}/8)$ vectors.
 - **BRAM Usage:** Max layer is $416 \times 3 \text{ channels} = 1.2 \text{ KB}$. Deep layers like $13 \times 1024$ use $13.3 \text{ KB}$. Both fit comfortably in BRAM36K.
+- **Zero-Padding (TODO):** The kernel window generator has no internal padding logic — it produces "valid"-only outputs and wraps left-edge data circularly. The **Input DMA must insert zero-padding** before streaming each layer:
+  - **Top/Bottom:** One extra row of zero vectors ($W \times C_{in}/8$ zeros) at the top and bottom.
+  - **Left/Right:** $C_{in}/8$ zero vectors at the start and end of every row.
+  - This expands the effective input from $H \times W$ to $(H+2) \times (W+2)$, so the kernel window produces the full $H \times W$ spatial output ("same" padding).
+  - `conv_layer.cfg_img_width` / `cfg_img_height` should be set to the **padded** dimensions ($W+2$, $H+2$).
 
 ### 2. Window Generator (Spatial-Temporal)
 Unlike NCHW, the horizontal neighbor is not the previous cycle's data.
