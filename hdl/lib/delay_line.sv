@@ -14,6 +14,12 @@ module delayLine #(
 logic [WIDTH-1:0] mem [MAX_DEPTH-1:0];
 logic [7:0] ptr;
 
+initial begin
+    for (int i = 0; i < MAX_DEPTH; i++) begin
+        mem[i] = '0;
+    end
+end
+
 always_ff @(posedge clk) begin
     if(rst) begin
         dout <= '0;
@@ -27,7 +33,7 @@ always_ff @(posedge clk) begin
             dout <= mem[ptr];
             mem[ptr] <= din;
 
-            if(ptr >= delay_depth - 2) ptr <= '0;
+            if(ptr >= delay_depth - 1) ptr <= '0;
             else ptr <= ptr + 1'b1;
         end
     end

@@ -13,6 +13,12 @@ module lineBuffer #(
     (* ram_style = "block" *)
     logic [63:0] line [MAX_WIDTH-1:0];
 
+    initial begin
+        for (int i = 0; i < MAX_WIDTH; i++) begin
+            line[i] = '0;
+        end
+    end
+
     // Pointer width must match MAX_WIDTH
     logic [$clog2(MAX_WIDTH)-1:0] wrPtr;
 
@@ -29,7 +35,7 @@ module lineBuffer #(
                 o_data <= line[wrPtr];
                 line[wrPtr] <= pixel;
 
-                if (wrPtr >= curr_width - 2)
+                if (wrPtr >= curr_width - 1)
                     wrPtr <= '0;
                 else
                     wrPtr <= wrPtr + 1'b1;
