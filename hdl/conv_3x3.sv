@@ -18,7 +18,7 @@ genvar i;
 generate
 
     for (i=0; i<8; i++) begin : pe_gen
-        if(i==0) begin
+        if(i==0) begin : pe0_blk
             conv_pe ConvPE(
                 .clk(clk),
                 .rst(rst),

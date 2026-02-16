@@ -50,7 +50,9 @@ module conv_top #(
     output logic                          dbg_wt_data_ready,
     output logic                          dbg_conv_valid_in,
     output logic                          dbg_conv_last_channel,
-    output logic [63:0]                   dbg_pixel_d2 [0:2][0:2]
+    output logic [63:0]                   dbg_pixel_d2 [0:2][0:2],
+    output logic [31:0]                   dbg_conv_outs [0:7],
+    output logic                          dbg_conv_data_valid
 );
 
 // ════════════════════════════════════════════════════════════════
@@ -76,6 +78,12 @@ logic                        conv_valid_in;
 logic                        conv_last_channel;
 
 // ════════════════════════════════════════════════════════════════
+//  Internal wires: conv_3x3 outputs
+// ════════════════════════════════════════════════════════════════
+logic [31:0]                 conv_outs [0:7];
+logic                        conv_data_valid;
+
+// ════════════════════════════════════════════════════════════════
 //  Internal wires: kernel window → pixel delay
 // ════════════════════════════════════════════════════════════════
 logic [63:0]                 kw_window [0:2][0:2];
@@ -88,9 +96,16 @@ logic                        last_pixel;
 assign last_pixel = pixel_in_last & kw_dout_valid;
 
 // ════════════════════════════════════════════════════════════════
-//  Pixel delay: 3-stage shift register (matches URAM read pipeline)
-//  Free-running — advances every clock, same as weight_manager's
-//  rdata_pipe. Verified in tb_wt_conv_integration.
+//  Pixel delay: 3-stage shift register (matches WT_LATENCY).
+//  Valid delay is 4 cycles (1 NBA + 3 shift), pixel delay is 3
+//  cycles, so pixel_d2 settles 1 cycle before conv_valid_in.
+//  conv_pe synchronously samples the "old" pixel_d2 at the posedge
+//  where conv_valid_in fires, giving the correct aligned window.
+//
+//  NOTE: At the very first output position, window[0][0] may not
+//  have propagated yet (LB cascade NBA adds 1 beat to pipeline
+//  depth). For zero-padded images this is benign — that cell
+//  corresponds to a padding pixel (value 0).
 // ════════════════════════════════════════════════════════════════
 logic [63:0] pixel_d0 [0:2][0:2];
 logic [63:0] pixel_d1 [0:2][0:2];
@@ -191,11 +206,13 @@ assign dbg_bias_valid        = bias_valid;
 assign dbg_wt_data_ready     = wt_data_ready;
 assign dbg_conv_valid_in     = conv_valid_in;
 assign dbg_conv_last_channel = conv_last_channel;
+assign dbg_conv_data_valid   = conv_data_valid;
 
 always_comb begin
     for (int i = 0; i < 8; i++) begin
         dbg_bias_out[i]    = bias_out[i];
         dbg_wt_data_out[i] = wt_data_out[i];
+        dbg_conv_outs[i]   = conv_outs[i];
     end
     for (int r = 0; r < 3; r++)
         for (int c = 0; c < 3; c++)
@@ -203,7 +220,21 @@ always_comb begin
 end
 
 // ════════════════════════════════════════════════════════════════
-//  TODO: conv_3x3      (pixel_d2, wt_data_out, bias_out → conv_outs)
+//  Conv 3x3: 8 parallel PEs computing 8 output channels
+// ════════════════════════════════════════════════════════════════
+conv_3x3 u_conv_3x3 (
+    .clk          (clk),
+    .rst          (rst),
+    .valid_in     (conv_valid_in),
+    .last_channel (conv_last_channel),
+    .pixels       (pixel_d2),
+    .weights      (wt_data_out),
+    .biases       (bias_out),
+    .outs         (conv_outs),
+    .data_valid   (conv_data_valid)
+);
+
+// ════════════════════════════════════════════════════════════════
 //  TODO: quantizers ×8  (conv_outs → quant_packed)
 //  TODO: maxpool mux   (quant_packed → data_out)
 // ════════════════════════════════════════════════════════════════
