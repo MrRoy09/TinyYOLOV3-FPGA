@@ -21,11 +21,23 @@ logic [31:0] delay_count;
 logic        priming_done;
 logic [31:0] total_delay;
 
+// Column counter: suppresses output during the first 2*delay_depth
+// beats of each row, where delay lines wrap across the row boundary.
+// With zero-padded input the values happen to be correct, but the
+// spatial positions are padding columns that must not generate
+// conv_valid_in pulses.
+logic [31:0] col_cnt;
+logic        col_valid;
+
 assign delay_depth = in_channels >> 3;
 assign vectors_per_row = img_width * delay_depth;
 assign row2 = pixel_in;
 
-assign total_delay = (vectors_per_row << 1) + (delay_depth << 1);
+// Pipeline depth = 2*vectors_per_row + 2*delay_depth.
+// Subtract 1 because priming_done is registered (takes effect
+// one cycle after the trigger), so the trigger must fire one
+// cycle early to align with the first valid window output.
+assign total_delay = (vectors_per_row << 1) + (delay_depth << 1) - 1;
 
 always_ff @(posedge clk) begin
     if (rst) begin
@@ -42,7 +54,19 @@ always_ff @(posedge clk) begin
     end
 end
 
-assign dout_valid = priming_done && data_valid;
+always_ff @(posedge clk) begin
+    if (rst) begin
+        col_cnt <= '0;
+    end else if (data_valid) begin
+        if (col_cnt == vectors_per_row - 1)
+            col_cnt <= '0;
+        else
+            col_cnt <= col_cnt + 1;
+    end
+end
+
+assign col_valid  = (col_cnt >= (delay_depth << 1));
+assign dout_valid = priming_done && data_valid && col_valid;
 
 lineBuffer LineBuffer1 (
     .clk(clk),

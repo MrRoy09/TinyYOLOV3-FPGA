@@ -7,6 +7,7 @@ module bias_store #(
 
     input  logic                  wr_en,
     input  logic [127:0]          wr_data,
+    input  logic                  wr_addr_rst,
 
     input  logic                  rd_en,
     input  logic [ADDR_WIDTH-2:0] rd_group,
@@ -19,7 +20,7 @@ logic [127:0] bram [0:MAX_DEPTH-1];
 logic [ADDR_WIDTH-1:0] wr_addr;
 
 always_ff @(posedge clk) begin
-    if (rst)
+    if (rst || wr_addr_rst)
         wr_addr <= 0;
     else if (wr_en) begin
         bram[wr_addr] <= wr_data;

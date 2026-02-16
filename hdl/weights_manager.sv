@@ -8,6 +8,7 @@ module weight_manager #(
     // write port — CPU streams 72-bit words, auto-routing
     input logic        wr_en,
     input logic [71:0] wr_data,
+    input logic        wr_addr_rst,
 
     // read port — conv controller supplies address
     input logic                    rd_en,
@@ -27,7 +28,7 @@ wire [ADDR_WIDTH-1:0]   waddr   = wr_cnt[ADDR_WIDTH+5:6];
 logic [7:0] bank_wen_vec [0:7];
 
 always_ff @(posedge clk) begin
-    if (rst)
+    if (rst || wr_addr_rst)
         wr_cnt <= 0;
     else if (wr_en)
         wr_cnt <= wr_cnt + 1;

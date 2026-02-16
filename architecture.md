@@ -230,31 +230,53 @@ Status signals read by CPU:
 def run_layer(layer):
     ci_groups = layer.C_in // 8
     co_groups = layer.C_out // 8
+    max_og_per_load = URAM_DEPTH // ci_groups   # 4096 / ci_groups
 
-    # Phase 1: one-time setup
-    reset bias_store write address
+    # Phase 1: load biases (once per layer, all output groups fit)
+    pulse bias_wr_addr_rst
     stream biases to bias_store        # C_out/4 × 128-bit beats
-    reset weight_manager write counter
-    stream weights to weight_manager   # co_groups × ci_groups × 64 × 72-bit beats
 
-    # Phase 2: process each output group
-    for og in range(co_groups):
-        write cfg_ci_groups   = ci_groups
-        write cfg_output_group = og
-        write cfg_wt_base_addr = og * ci_groups
+    # Phase 2: process output groups in chunks that fit in URAM
+    for chunk_start in range(0, co_groups, max_og_per_load):
+        chunk_end = min(chunk_start + max_og_per_load, co_groups)
 
-        # start pixel DMA (re-streams entire input image from DDR)
-        start_pixel_dma(layer.input_addr, layer.H, layer.W, layer.C_in)
+        # reload weights for this chunk of output groups
+        pulse wt_wr_addr_rst
+        stream weights for og [chunk_start .. chunk_end-1]
+        # beats = (chunk_end - chunk_start) × ci_groups × 64
 
-        # kick off controller
-        pulse go
+        # process each output group in this chunk
+        for og in range(chunk_start, chunk_end):
+            write cfg_ci_groups    = ci_groups
+            write cfg_output_group = og
+            write cfg_wt_base_addr = (og - chunk_start) * ci_groups
 
-        # wait for completion
-        poll until done == 1
-
-        # output DMA has been collecting conv_3x3 results for this group
-        # (8 output channels worth of spatial data)
+            start_pixel_dma(layer.input_addr, layer.H, layer.W, layer.C_in)
+            pulse go
+            poll until done == 1
 ```
+
+### Weight Capacity and Multi-Pass Loading
+
+The weight URAM has a fixed depth of 4096 addresses. Each address holds weights for one (output_group, input_ch_group) pair. The maximum number of output groups that fit in one load:
+
+```
+max_og_per_load = 4096 / ci_groups
+```
+
+| Layer | ci_groups | co_groups | max_og_per_load | Loads needed |
+|-------|-----------|-----------|-----------------|-------------|
+| 0 | 1 | 2 | 4096 | 1 |
+| 2 | 2 | 4 | 2048 | 1 |
+| 4 | 4 | 8 | 1024 | 1 |
+| 6 | 8 | 16 | 512 | 1 |
+| 8 | 16 | 32 | 256 | 1 |
+| 10 | 32 | 64 | 128 | 1 |
+| 12 | 64 | 128 | 64 | **2** |
+
+Only layer 12 (Cin=512, Cout=1024) exceeds URAM capacity, requiring 2 weight loads. The CPU splits it into two chunks of 64 output groups each, reloading weights between them via `wt_wr_addr_rst`.
+
+Note: `cfg_wt_base_addr` is relative to the current chunk, not the absolute output group index: `(og - chunk_start) * ci_groups`. The bias_store still uses the absolute `og` since all biases fit in one load (max 128 groups × 2 rows = 256 entries).
 
 ### Controller FSM States
 
