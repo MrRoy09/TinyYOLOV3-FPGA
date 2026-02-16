@@ -3,148 +3,163 @@
 module tb_weight_manager;
 
     parameter DEPTH = 4096;
-    logic clk;
-    logic rst;
+    parameter ADDR_WIDTH = $clog2(DEPTH);
 
-    logic write_mode;
-    logic data_valid;
-    logic [71:0] data_in;
-    logic write_complete;
+    logic clk, rst;
 
-    logic [9:0] cfg_ci_groups;
-    logic [9:0] cfg_co_groups;
+    logic        wr_en;
+    logic [71:0] wr_data;
 
-    logic read_en;
-    logic data_ready;
-    logic [575:0] data_out [0:7];
-    logic read_complete;
+    logic                    rd_en;
+    logic [ADDR_WIDTH-1:0]   rd_addr;
+    logic [575:0]            data_out [0:7];
+    logic                    data_ready;
 
-    // cin=64, cout=128
-    localparam CIN = 64;
+    localparam CIN  = 64;
     localparam COUT = 128;
     localparam CI_GROUPS = CIN / 8;
     localparam CO_GROUPS = COUT / 8;
-    localparam TOTAL_GROUPS = CI_GROUPS * CO_GROUPS;
+    localparam TOTAL = CO_GROUPS * CI_GROUPS;
+    localparam PIPE  = 3;  // weight_bank read latency
 
     weight_manager #(
         .DEPTH(DEPTH)
     ) dut (
-        .clk(clk),
-        .rst(rst),
-        .write_mode(write_mode),
-        .data_valid(data_valid),
-        .data_in(data_in),
-        .write_complete(write_complete),
-        .cfg_ci_groups(10'(CI_GROUPS)),
-        .cfg_co_groups(10'(CO_GROUPS)),
-        .read_en(read_en),
-        .data_ready(data_ready),
-        .data_out(data_out),
-        .read_complete(read_complete)
+        .clk      (clk),
+        .rst      (rst),
+        .wr_en    (wr_en),
+        .wr_data  (wr_data),
+        .rd_en    (rd_en),
+        .rd_addr  (rd_addr),
+        .data_out (data_out),
+        .data_ready (data_ready)
     );
 
     initial clk = 0;
     always #5 clk = ~clk;
 
-    // Timeout logic
     initial begin
         #500us;
         $display("[%0t] ERROR: Simulation timeout!", $time);
         $finish;
     end
 
-    // Shadow memory: [filter][channel] = 72-bit data
+    // Shadow memory: [filter][channel] = 72-bit raw weight word
     logic [71:0] shadow_mem [COUT][CIN];
 
+    // Read schedule: store (og, ig) for each read so we can verify after pipeline
+    int rd_og_q [$];
+    int rd_ig_q [$];
+
+    int errors = 0;
+
     initial begin
-        rst = 1;
-        write_mode = 0;
-        data_valid = 0;
-        data_in = 0;
-        read_en = 0;
-        cfg_ci_groups = CI_GROUPS;
-        cfg_co_groups = CO_GROUPS;
+        $dumpfile("tb_weight_manager.vcd");
+        $dumpvars(0, tb_weight_manager);
+
+        rst     = 1;
+        wr_en   = 0;
+        wr_data = 0;
+        rd_en   = 0;
+        rd_addr = 0;
 
         #100 rst = 0;
-        #100;
+        #20;
 
-        $display("[%0t] Starting Write Sequence (CIN=%0d, COUT=%0d)", $time, CIN, COUT);
-        for (int f = 0; f < COUT; f++) begin
-            for (int c = 0; c < CIN; c++) begin
-                @(posedge clk);
-                write_mode <= 1;
-                data_valid <= 1;
-                data_in <= {8'(f), 8'(c), 56'h11223344556677};
-                shadow_mem[f][c] = {8'(f), 8'(c), 56'h11223344556677};
+        // ──────────────────────────────────────────────
+        // WRITE: stream in CPU order
+        //   for addr = 0 .. co_groups*ci_groups-1:
+        //     for bank = 0..7:
+        //       for uram = 0..7:
+        //         stream 72-bit word
+        // ──────────────────────────────────────────────
+        $display("[%0t] Writing weights (CIN=%0d, COUT=%0d)", $time, CIN, COUT);
+
+        for (int addr = 0; addr < TOTAL; addr++) begin
+            int og = addr / CI_GROUPS;
+            int ig = addr % CI_GROUPS;
+            for (int bank = 0; bank < 8; bank++) begin
+                for (int uram = 0; uram < 8; uram++) begin
+                    int f = og * 8 + bank;
+                    int c = ig * 8 + uram;
+                    logic [71:0] word;
+                    word = {8'(f), 8'(c), 56'hAABBCCDDEE0000 + 56'(f * 256 + c)};
+                    shadow_mem[f][c] = word;
+
+                    @(posedge clk);
+                    wr_en   <= 1;
+                    wr_data <= word;
+                end
             end
         end
         @(posedge clk);
-        data_valid <= 0;
-        
-        $display("[%0t] Loop finished, waiting for write_complete...", $time);
-        wait(write_complete);
-        $display("[%0t] Write sequence complete. write_complete ASSERTED.", $time);
-        @(posedge clk);
-        write_mode <= 0;
+        wr_en <= 0;
+
+        $display("[%0t] Write complete. Total beats: %0d", $time, TOTAL * 64);
         #100;
 
-        $display("[%0t] Starting CONTINUOUS Read and Verify", $time);
-        
-        // Assert read_en and keep it high for the whole sequence
-        @(posedge clk);
-        read_en <= 1;
+        // ──────────────────────────────────────────────
+        // READ + VERIFY: pipelined — issue reads for TOTAL + PIPE cycles
+        //   cycles 0..TOTAL-1: issue rd_en with address
+        //   cycles PIPE..TOTAL+PIPE-1: verify output
+        // ──────────────────────────────────────────────
+        $display("[%0t] Starting pipelined read and verify", $time);
 
-        // Verify each group as it streams out
-        for (int g = 0; g < TOTAL_GROUPS; g++) begin
-            int og = g / CI_GROUPS;
-            int ig = g % CI_GROUPS;
+        for (int cyc = 0; cyc < TOTAL + PIPE; cyc++) begin
+            @(posedge clk);
+            #1; // let NBAs settle before sampling outputs
 
-            // Wait for data_ready to align with the first group (latency is 3 cycles)
-            if (g == 0) begin
-                while (!data_ready) @(posedge clk);
+            // issue read
+            if (cyc < TOTAL) begin
+                int og = cyc / CI_GROUPS;
+                int ig = cyc % CI_GROUPS;
+                rd_en   <= 1;
+                rd_addr <= og * CI_GROUPS + ig;
+                rd_og_q.push_back(og);
+                rd_ig_q.push_back(ig);
             end else begin
-                @(posedge clk);
+                rd_en <= 0;
             end
 
-            // Verify each of the 8 filters in the group
-            for (int f_off = 0; f_off < 8; f_off++) begin
-                int f_idx = og * 8 + f_off;
-                logic [575:0] actual = data_out[f_off];
-                logic [575:0] expected;
-                
-                // Reconstruct expected 576-bit value from shadow memory
-                for (int pos = 0; pos < 9; pos++) begin
-                    for (int c_off = 0; c_off < 8; c_off++) begin
-                        int c_idx = ig * 8 + c_off;
-                        expected[(pos*64 + c_off*8) +: 8] = shadow_mem[f_idx][c_idx][(pos*8) +: 8];
-                    end
+            // verify output (3 cycles behind)
+            if (cyc >= PIPE) begin
+                int v_og = rd_og_q.pop_front();
+                int v_ig = rd_ig_q.pop_front();
+
+                if (!data_ready) begin
+                    $display("[%0t] ERROR: data_ready not asserted at og=%0d ig=%0d", $time, v_og, v_ig);
+                    errors++;
                 end
 
-                if (actual !== expected) begin
-                    $display("[%0t] MISMATCH: Group %0d (Filter %0d, Channel Group %0d)", $time, g, f_idx, ig);
-                    // Detailed byte-level mismatch for debugging
-                    for (int b = 0; b < 72; b++) begin
-                        if (actual[b*8 +: 8] !== expected[b*8 +: 8]) begin
-                            $display("  Byte %0d mismatch: exp=%h got=%h", b, expected[b*8 +: 8], actual[b*8 +: 8]);
+                for (int bank = 0; bank < 8; bank++) begin
+                    logic [575:0] actual;
+                    logic [575:0] expected;
+                    int f = v_og * 8 + bank;
+
+                    actual = data_out[bank];
+                    expected = '0;
+
+                    for (int pos = 0; pos < 9; pos++) begin
+                        for (int ch = 0; ch < 8; ch++) begin
+                            int c = v_ig * 8 + ch;
+                            expected[(pos*64 + ch*8) +: 8] = shadow_mem[f][c][(pos*8) +: 8];
                         end
                     end
+
+                    if (actual !== expected) begin
+                        $display("[%0t] MISMATCH: og=%0d ig=%0d bank=%0d (filter=%0d)",
+                                 $time, v_og, v_ig, bank, f);
+                        errors++;
+                    end
                 end
             end
         end
 
-        // Sequence finishes, stop read_en
-        @(posedge clk);
-        read_en <= 0;
-
-        // Verify read_complete pulse
-        if (!read_complete) begin
-            $display("[%0t] Waiting for read_complete...", $time);
-            while(!read_complete) @(posedge clk);
-        end
-        $display("[%0t] read_complete ASSERTED.", $time);
-
         #100;
-        $display("[%0t] Continuous stream simulation complete SUCCESS", $time);
+        if (errors == 0)
+            $display("[%0t] ALL TESTS PASSED", $time);
+        else
+            $display("[%0t] FAILED with %0d errors", $time, errors);
         $finish;
     end
 

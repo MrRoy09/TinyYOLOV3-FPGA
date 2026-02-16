@@ -5,110 +5,57 @@ module weight_manager #(
     input logic clk,
     input logic rst,
 
-    input logic write_mode,
-    input logic data_valid,
-    input logic [71:0] data_in,
-    output logic write_complete,
+    // write port — CPU streams 72-bit words, auto-routing
+    input logic        wr_en,
+    input logic [71:0] wr_data,
 
-    input logic [9:0] cfg_ci_groups,
-    input logic [9:0] cfg_co_groups,
-
-    input logic read_en,
-    output logic data_ready,
-    output logic [575:0] data_out [0:7],
-    output logic read_complete
+    // read port — conv controller supplies address
+    input logic                    rd_en,
+    input logic [ADDR_WIDTH-1:0]   rd_addr,
+    output logic [575:0]           data_out [0:7],
+    output logic                   data_ready
 );
 
-logic [12:0] write_ch_cnt;
-logic [12:0] write_f_cnt;
-logic [ADDR_WIDTH-1:0] waddr;
+// ── Write: auto-incrementing counter, bit-slice routing ──
 
-assign waddr = (write_f_cnt >> 3) * cfg_ci_groups + (write_ch_cnt >> 3);
+logic [ADDR_WIDTH+5:0] wr_cnt;
 
-logic [2:0] bank_sel;
-assign bank_sel = write_f_cnt[2:0];
-
-logic [2:0] uram_sel;
-assign uram_sel = write_ch_cnt[2:0];
+wire [2:0]              uram_sel = wr_cnt[2:0];
+wire [2:0]              bank_sel = wr_cnt[5:3];
+wire [ADDR_WIDTH-1:0]   waddr   = wr_cnt[ADDR_WIDTH+5:6];
 
 logic [7:0] bank_wen_vec [0:7];
 
 always_ff @(posedge clk) begin
-    if (rst) begin
-        write_ch_cnt   <= 0;
-        write_f_cnt    <= 0;
-        write_complete <= 0;
-    end else if (write_mode) begin
-        if (data_valid) begin
-            if (write_ch_cnt >= (13'(cfg_ci_groups) << 3) - 13'd1) begin
-                write_ch_cnt <= 0;
-                if (write_f_cnt >= (13'(cfg_co_groups) << 3) - 13'd1) begin
-                    write_f_cnt    <= 0;
-                    write_complete <= 1'b1;
-                end else begin
-                    write_f_cnt <= write_f_cnt + 1;
-                end
-            end else begin
-                write_ch_cnt <= write_ch_cnt + 1;
-            end
-        end
-    end else begin
-        write_ch_cnt   <= 0;
-        write_f_cnt    <= 0;
-        write_complete <= 0;
-    end
+    if (rst)
+        wr_cnt <= 0;
+    else if (wr_en)
+        wr_cnt <= wr_cnt + 1;
 end
 
 always_comb begin
-    for(int i=0;i<8;i++) begin
-        if(write_mode && data_valid && bank_sel == i) begin
-            bank_wen_vec[i] = (1 << uram_sel);
-        end else begin
+    for (int i = 0; i < 8; i++) begin
+        if (wr_en && bank_sel == i)
+            bank_wen_vec[i] = 8'(1 << uram_sel);
+        else
             bank_wen_vec[i] = 8'b0;
-        end
     end
 end
 
-// read mechanism
+// ── Read: 3-cycle latency pipeline (matches conv_pe pipeline) ──
 
-logic [ADDR_WIDTH-1:0] read_address;
-logic [9:0] input_ch_gr_counter;
-logic [9:0] output_ch_gr_counter;
 logic [2:0] ready_pipe;
-logic [2:0] complete_pipe;
-logic read_done_raw;
 
-assign read_address  = input_ch_gr_counter + (output_ch_gr_counter * cfg_ci_groups);
-assign data_ready    = ready_pipe[2];
-assign read_complete = complete_pipe[2];
+assign data_ready = ready_pipe[2];
 
 always_ff @(posedge clk) begin
-    if (rst) begin
-        input_ch_gr_counter  <= 0;
-        output_ch_gr_counter <= 0;
-        read_done_raw        <= 0;
-        ready_pipe           <= 3'b0;
-        complete_pipe        <= 3'b0;
-    end else begin
-        ready_pipe    <= {ready_pipe[1:0], read_en};
-        complete_pipe <= {complete_pipe[1:0], read_done_raw};
-
-        if (read_en) begin
-            read_done_raw <= 0;
-            if (input_ch_gr_counter >= cfg_ci_groups - 1) begin
-                input_ch_gr_counter <= 0;
-                if (output_ch_gr_counter >= cfg_co_groups - 1) begin
-                    output_ch_gr_counter <= 0;
-                    read_done_raw        <= 1;
-                end else begin
-                    output_ch_gr_counter <= output_ch_gr_counter + 1;
-                end
-            end else begin
-                input_ch_gr_counter <= input_ch_gr_counter + 1;
-            end
-        end
-    end
+    if (rst)
+        ready_pipe <= 3'b0;
+    else
+        ready_pipe <= {ready_pipe[1:0], rd_en};
 end
+
+// ── 8 weight banks ──
 
 genvar i, j;
 generate
@@ -118,7 +65,7 @@ generate
 
         for (j = 0; j < 8; j++) begin : ctrl_map
             assign wen_unpacked[j] = bank_wen_vec[i][j];
-            assign ren_unpacked[j] = read_en;
+            assign ren_unpacked[j] = rd_en;
         end
 
         weight_bank #(
@@ -127,14 +74,13 @@ generate
             .clk   (clk),
             .rst   (rst),
             .wen   (wen_unpacked),
-            .wdata (data_in),
+            .wdata (wr_data),
             .waddr (waddr),
             .ren   (ren_unpacked),
-            .raddr (read_address),
+            .raddr (rd_addr),
             .rdata (data_out[i])
         );
     end
 endgenerate
-
 
 endmodule

@@ -151,3 +151,49 @@ Each cluster computes 1 output channel.
 2. **Sequential DDR Bursts:** Maximize memory throughput.
 3. **Low Latency:** Output pixels begin appearing as soon as the first input pixel's channels are streamed.
 4. **Scalability:** Easy to scale by increasing $P_{in}$ (Bus usage) or $P_{out}$ (DSP usage).
+
+---
+
+## CPU–Hardware Interface: Pre-Layer Setup
+
+The design philosophy is **dumb hardware, smart CPU**. All bookkeeping (loop counts, completion detection, layer configuration) lives in the CPU driver. The hardware modules are simple storage devices with auto-incrementing write ports and externally-addressed read ports.
+
+### Bias Loading (`bias_store`)
+
+- **Storage:** True dual-port BRAM, 128 bits wide × 256 deep.
+- **Write:** CPU streams 128-bit words via DMA. Each word packs 4 × INT32 biases. Hardware auto-increments the write address.
+- **Read:** Conv controller supplies an output group index. Hardware reads two consecutive rows (using `{group, 1'b0}` and `{group, 1'b1}` addressing) in a single cycle via dual-port, returning 8 biases with 1-cycle latency.
+
+**CPU stream order for biases:**
+```
+for co = 0 .. C_out-1, step 4:
+    stream 128-bit word = {bias[co+3], bias[co+2], bias[co+1], bias[co+0]}
+```
+Total beats: `C_out / 4`.
+
+### Weight Loading (`weight_manager`)
+
+- **Storage:** 8 banks × 8 URAMs per bank. Each URAM entry is 72 bits (9 spatial positions × 8-bit weight).
+- **Write:** CPU streams 72-bit words (packed in 128-bit bus beats, upper bits zeroed). Hardware uses a single auto-incrementing counter with bit-slice routing:
+  - `cnt[2:0]` → `uram_sel` (which input channel within $P_{in}$ group)
+  - `cnt[5:3]` → `bank_sel` (which output filter within $P_{out}$ group)
+  - `cnt[ADDR_WIDTH+5:6]` → `waddr` (BRAM address)
+- **Read:** Conv controller supplies `rd_en` + `rd_addr`. All 8 banks read the same address simultaneously. 3-cycle read latency (matches `conv_pe` pipeline).
+
+**CPU stream order for weights:**
+```
+for addr = 0 .. (co_groups * ci_groups - 1):       // BRAM address
+    for bank = 0 .. 7:                              // output filter within Pout group
+        for uram = 0 .. 7:                          // input channel within Pin group
+            stream 72-bit word = 9 spatial weights for:
+                filter  = (addr / ci_groups) * 8 + bank
+                in_chan = (addr % ci_groups) * 8 + uram
+```
+Total beats: `co_groups × ci_groups × 64`. Bus efficiency: 72/128 = 56%.
+
+**Mapping to physical weight tensor:** Given a weight tensor `W[co][ci][ky][kx]` (INT8), each 72-bit word is packed as:
+```
+word = {W[f][c][2][2], W[f][c][2][1], W[f][c][2][0],
+        W[f][c][1][2], W[f][c][1][1], W[f][c][1][0],
+        W[f][c][0][2], W[f][c][0][1], W[f][c][0][0]}   // 9 bytes, spatial raster order
+```
