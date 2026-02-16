@@ -197,3 +197,125 @@ word = {W[f][c][2][2], W[f][c][2][1], W[f][c][2][0],
         W[f][c][1][2], W[f][c][1][1], W[f][c][1][0],
         W[f][c][0][2], W[f][c][0][1], W[f][c][0][0]}   // 9 bytes, spatial raster order
 ```
+
+---
+
+## Conv Controller (`conv_controller`) and CPU Driver Flow
+
+### Design Philosophy
+
+The CPU owns **all outer loops and layer sequencing**. The hardware conv_controller handles **one output group at a time**: it reads biases, processes all pixels × all input channel groups for that output group, then signals completion. The CPU repeats for each output group.
+
+### CPU Register Interface
+
+The CPU configures these registers before pulsing `go`:
+
+| Register | Width | Description |
+|----------|-------|-------------|
+| `cfg_ci_groups` | 10 bits | $C_{in} / 8$ for this layer |
+| `cfg_output_group` | 7 bits | Which output group (0 .. $C_{out}/8 - 1$) |
+| `cfg_wt_base_addr` | 12 bits | Precomputed: `output_group × ci_groups` (avoids multiplier in hardware) |
+| `go` | 1 bit | Pulse to start processing this output group |
+
+Status signals read by CPU:
+
+| Signal | Description |
+|--------|-------------|
+| `busy` | High while controller is processing |
+| `done` | Pulse when output group is complete (pipeline fully drained) |
+
+### Per-Layer CPU Driver Pseudocode
+
+```
+def run_layer(layer):
+    ci_groups = layer.C_in // 8
+    co_groups = layer.C_out // 8
+
+    # Phase 1: one-time setup
+    reset bias_store write address
+    stream biases to bias_store        # C_out/4 × 128-bit beats
+    reset weight_manager write counter
+    stream weights to weight_manager   # co_groups × ci_groups × 64 × 72-bit beats
+
+    # Phase 2: process each output group
+    for og in range(co_groups):
+        write cfg_ci_groups   = ci_groups
+        write cfg_output_group = og
+        write cfg_wt_base_addr = og * ci_groups
+
+        # start pixel DMA (re-streams entire input image from DDR)
+        start_pixel_dma(layer.input_addr, layer.H, layer.W, layer.C_in)
+
+        # kick off controller
+        pulse go
+
+        # wait for completion
+        poll until done == 1
+
+        # output DMA has been collecting conv_3x3 results for this group
+        # (8 output channels worth of spatial data)
+```
+
+### Controller FSM States
+
+```
+IDLE ──go──> LOAD_BIAS ──1 cycle──> WAIT_BIAS ──bias_valid──> CONV ──last_pixel──> DRAIN ──pipe flush──> IDLE
+                                                                 │                              │
+                                                                 │ pixel_valid: drive weights    │
+                                                                 │ + conv_3x3 each cycle        done pulse
+```
+
+1. **IDLE**: Wait for CPU `go` pulse.
+2. **LOAD_BIAS**: Issue `bias_rd_en` with `cfg_output_group` to `bias_store`.
+3. **WAIT_BIAS**: Wait 1 cycle for `bias_valid`. Biases latch on `bias_out[0:7]` and stay stable until next read.
+4. **CONV**: Main compute state. On each `pixel_valid` from kernel_window:
+   - Assert `wt_rd_en` with address `cfg_wt_base_addr + ci_cnt`
+   - Generate `valid_raw` and `last_ch_raw` (delayed by `WT_LATENCY` cycles before reaching `conv_3x3`)
+   - Increment `ci_cnt` (0 .. ci_groups-1), assert `last_ch_raw` on the last group
+   - When `last_pixel` coincides with the final channel group → transition to DRAIN
+5. **DRAIN**: Wait `PIPE_DEPTH = WT_LATENCY(3) + CONV_PE_PIPE(3) + 1 = 7` cycles for the full pipeline to flush. Pulse `done`.
+
+### Pixel Re-Streaming
+
+For each output group, the **entire input image** is re-streamed from DDR via the input DMA. The line buffer / kernel_window cannot store the full frame — only 2-3 rows. Each output group needs the same pixels multiplied by different weights (filters).
+
+**Bandwidth cost:** Each layer re-reads the input `co_groups` times.
+- Worst case (layer 12): 13×13×512 bytes × 128 groups = ~11 MB, at 1.6 GB/s ≈ 7 ms.
+- Total re-stream overhead across all layers is well within DDR4 bandwidth.
+
+### `last_pixel` Signal Contract
+
+The input DMA (or kernel_window) must assert `last_pixel` alongside `pixel_valid` on the **very last beat** of the frame — the last channel group ($ci\_cnt = ci\_groups - 1$) of the last spatial position. This is the DMA's responsibility since it knows the total transfer length.
+
+### Pipeline Synchronization
+
+Weights and pixels must arrive at `conv_pe` inputs on the **same cycle**, because the multiply stage (`products <= pixel * weight`) samples both combinationally. The full latency chain:
+
+```
+Cycle 0: controller asserts wt_rd_en, valid_raw, last_ch_raw
+         kernel_window outputs pixels
+           │
+           ├── weight_manager: 3-cycle URAM read pipeline
+           │     Cycle 1: rdata_pipe[0] <= memory[raddr]
+           │     Cycle 2: rdata_pipe[1] <= rdata_pipe[0]
+           │     Cycle 3: rdata_pipe[2] <= rdata_pipe[1]  → weights valid at conv_pe
+           │
+           ├── conv_controller: 3-cycle delay shift registers
+           │     valid_dly[0] → valid_dly[1] → valid_dly[2] = conv_valid_in
+           │     last_ch_dly[0] → last_ch_dly[1] → last_ch_dly[2] = conv_last_channel
+           │
+           └── conv_top: 3-cycle pixel delay (shift register on pixels[0:2][0:2])
+                 pixel_d[0] → pixel_d[1] → pixel_d[2]  → pixels valid at conv_pe
+
+Cycle 3: weights, pixels, conv_valid_in, conv_last_channel all arrive at conv_pe simultaneously
+           │
+           └── conv_pe internal pipeline (3 stages):
+                 Cycle 4: products <= pixel * weight
+                 Cycle 5: spatial_sum <= reduce(products)
+                 Cycle 6: cycle_sum <= reduce(spatial_sum)
+                 Cycle 7: acc += cycle_sum (gated by valid_pipe[2] / lastc_pipe[2])
+```
+
+**DRAIN depth** = `WT_LATENCY(3) + CONV_PE_PIPE(3) + accumulator(1)` = **7 cycles**.
+
+**conv_top pixel delay requirement:** The `pixels[0:2][0:2]` bus from `kernel_window` output must be delayed by `WT_LATENCY` (3) cycles before reaching `conv_3x3` inputs. This is a simple shift register in `conv_top` wiring — 9 × 64-bit × 3 stages. This ensures pixels and weights arrive at the multiply stage on the same clock edge.
