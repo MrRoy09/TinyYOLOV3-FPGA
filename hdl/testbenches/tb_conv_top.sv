@@ -53,6 +53,25 @@ module tb_conv_top;
     logic [63:0]                   dbg_pixel_d2 [0:2][0:2];
     logic [31:0]                   dbg_conv_outs [0:7];
     logic                          dbg_conv_data_valid;
+    // Kernel window debug
+    logic [63:0]                   dbg_kw_row0;
+    logic [63:0]                   dbg_kw_row1;
+    logic [63:0]                   dbg_kw_row2;
+    logic [31:0]                   dbg_kw_delay_count;
+    logic [31:0]                   dbg_kw_total_delay;
+    logic                          dbg_kw_priming_done;
+    logic [31:0]                   dbg_kw_col_cnt;
+    logic                          dbg_kw_col_valid;
+    logic [7:0]                    dbg_kw_delay_depth;
+    logic [31:0]                   dbg_kw_vectors_per_row;
+    // Output streaming debug
+    logic [63:0]                   dbg_data_out;
+    logic                          dbg_data_out_valid;
+    logic [31:0]                   dbg_output_count;
+    logic [63:0]                   dbg_quant_packed;
+    logic                          dbg_quant_valid;
+    logic [63:0]                   dbg_maxpool_out;
+    logic                          dbg_maxpool_valid;
 
     // ── DUT ──
     conv_top #(
@@ -95,7 +114,24 @@ module tb_conv_top;
         .dbg_conv_last_channel(dbg_conv_last_channel),
         .dbg_pixel_d2(dbg_pixel_d2),
         .dbg_conv_outs(dbg_conv_outs),
-        .dbg_conv_data_valid(dbg_conv_data_valid)
+        .dbg_conv_data_valid(dbg_conv_data_valid),
+        .dbg_kw_row0(dbg_kw_row0),
+        .dbg_kw_row1(dbg_kw_row1),
+        .dbg_kw_row2(dbg_kw_row2),
+        .dbg_kw_delay_count(dbg_kw_delay_count),
+        .dbg_kw_total_delay(dbg_kw_total_delay),
+        .dbg_kw_priming_done(dbg_kw_priming_done),
+        .dbg_kw_col_cnt(dbg_kw_col_cnt),
+        .dbg_kw_col_valid(dbg_kw_col_valid),
+        .dbg_kw_delay_depth(dbg_kw_delay_depth),
+        .dbg_kw_vectors_per_row(dbg_kw_vectors_per_row),
+        .dbg_data_out(dbg_data_out),
+        .dbg_data_out_valid(dbg_data_out_valid),
+        .dbg_output_count(dbg_output_count),
+        .dbg_quant_packed(dbg_quant_packed),
+        .dbg_quant_valid(dbg_quant_valid),
+        .dbg_maxpool_out(dbg_maxpool_out),
+        .dbg_maxpool_valid(dbg_maxpool_valid)
     );
 
     // ── Clock ──

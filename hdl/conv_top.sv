@@ -41,29 +41,7 @@ module conv_top #(
 
     // ── Output (Output DMA) ──
     output logic [63:0]                   data_out,
-    output logic                          data_out_valid,
-
-    // ── Debug outputs ──
-    output logic [31:0]                   dbg_bias_out [0:7],
-    output logic                          dbg_bias_valid,
-    output logic [575:0]                  dbg_wt_data_out [0:7],
-    output logic                          dbg_wt_data_ready,
-    output logic                          dbg_conv_valid_in,
-    output logic                          dbg_conv_last_channel,
-    output logic [63:0]                   dbg_pixel_d2 [0:2][0:2],
-    output logic [31:0]                   dbg_conv_outs [0:7],
-    output logic                          dbg_conv_data_valid,
-    // Kernel window debug
-    output logic [63:0]                   dbg_kw_row0,
-    output logic [63:0]                   dbg_kw_row1,
-    output logic [63:0]                   dbg_kw_row2,
-    output logic [31:0]                   dbg_kw_delay_count,
-    output logic [31:0]                   dbg_kw_total_delay,
-    output logic                          dbg_kw_priming_done,
-    output logic [31:0]                   dbg_kw_col_cnt,
-    output logic                          dbg_kw_col_valid,
-    output logic [7:0]                    dbg_kw_delay_depth,
-    output logic [31:0]                   dbg_kw_vectors_per_row
+    output logic                          data_out_valid
 );
 
 // ════════════════════════════════════════════════════════════════
@@ -204,39 +182,8 @@ kernelWindow u_kernel_window (
     .img_width  (cfg_img_width),
     .pixel_in   (pixel_in),
     .window     (kw_window),
-    .dout_valid (kw_dout_valid),
-    // Debug outputs
-    .dbg_row0            (dbg_kw_row0),
-    .dbg_row1            (dbg_kw_row1),
-    .dbg_row2            (dbg_kw_row2),
-    .dbg_delay_count     (dbg_kw_delay_count),
-    .dbg_total_delay     (dbg_kw_total_delay),
-    .dbg_priming_done    (dbg_kw_priming_done),
-    .dbg_col_cnt         (dbg_kw_col_cnt),
-    .dbg_col_valid       (dbg_kw_col_valid),
-    .dbg_delay_depth     (dbg_kw_delay_depth),
-    .dbg_vectors_per_row (dbg_kw_vectors_per_row)
+    .dout_valid (kw_dout_valid)
 );
-
-// ════════════════════════════════════════════════════════════════
-//  Debug output connections
-// ════════════════════════════════════════════════════════════════
-assign dbg_bias_valid        = bias_valid;
-assign dbg_wt_data_ready     = wt_data_ready;
-assign dbg_conv_valid_in     = conv_valid_in;
-assign dbg_conv_last_channel = conv_last_channel;
-assign dbg_conv_data_valid   = conv_data_valid;
-
-always_comb begin
-    for (int i = 0; i < 8; i++) begin
-        dbg_bias_out[i]    = bias_out[i];
-        dbg_wt_data_out[i] = wt_data_out[i];
-        dbg_conv_outs[i]   = conv_outs[i];
-    end
-    for (int r = 0; r < 3; r++)
-        for (int c = 0; c < 3; c++)
-            dbg_pixel_d2[r][c] = pixel_d2[r][c];
-end
 
 // ════════════════════════════════════════════════════════════════
 //  Conv 3x3: 8 parallel PEs computing 8 output channels

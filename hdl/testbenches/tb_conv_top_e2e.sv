@@ -51,7 +51,8 @@ module tb_conv_top_e2e;
     logic [63:0]                   data_out;
     logic                          data_out_valid;
 
-    // Debug (unused but must be connected)
+    // Debug signals - use `ifndef POST_SYNTH for RTL sim, leave unconnected for post-synth
+`ifndef POST_SYNTH
     logic [31:0]                   dbg_bias_out [0:7];
     logic                          dbg_bias_valid;
     logic [575:0]                  dbg_wt_data_out [0:7];
@@ -72,6 +73,15 @@ module tb_conv_top_e2e;
     logic                          dbg_kw_col_valid;
     logic [7:0]                    dbg_kw_delay_depth;
     logic [31:0]                   dbg_kw_vectors_per_row;
+    // Output streaming debug
+    logic [63:0]                   dbg_data_out;
+    logic                          dbg_data_out_valid;
+    logic [31:0]                   dbg_output_count;
+    logic [63:0]                   dbg_quant_packed;
+    logic                          dbg_quant_valid;
+    logic [63:0]                   dbg_maxpool_out;
+    logic                          dbg_maxpool_valid;
+`endif
 
     // ── DUT ──
     conv_top #(
@@ -79,7 +89,63 @@ module tb_conv_top_e2e;
         .BIAS_DEPTH (BIAS_DEPTH),
         .WT_LATENCY (WT_LATENCY),
         .CONV_PE_PIPE(CONV_PE_PIPE)
-    ) u_dut (.*);
+    ) u_dut (
+        .clk(clk),
+        .rst(rst),
+        .cfg_ci_groups(cfg_ci_groups),
+        .cfg_output_group(cfg_output_group),
+        .cfg_wt_base_addr(cfg_wt_base_addr),
+        .cfg_in_channels(cfg_in_channels),
+        .cfg_img_width(cfg_img_width),
+        .cfg_use_maxpool(cfg_use_maxpool),
+        .cfg_stride_2(cfg_stride_2),
+        .cfg_quant_m(cfg_quant_m),
+        .cfg_quant_n(cfg_quant_n),
+        .cfg_use_relu(cfg_use_relu),
+        .go(go),
+        .busy(busy),
+        .done(done),
+        .bias_wr_en(bias_wr_en),
+        .bias_wr_data(bias_wr_data),
+        .bias_wr_addr_rst(bias_wr_addr_rst),
+        .wt_wr_en(wt_wr_en),
+        .wt_wr_data(wt_wr_data),
+        .wt_wr_addr_rst(wt_wr_addr_rst),
+        .pixel_in(pixel_in),
+        .pixel_in_valid(pixel_in_valid),
+        .pixel_in_last(pixel_in_last),
+        .data_out(data_out),
+        .data_out_valid(data_out_valid)
+`ifndef POST_SYNTH
+        ,
+        .dbg_bias_out(dbg_bias_out),
+        .dbg_bias_valid(dbg_bias_valid),
+        .dbg_wt_data_out(dbg_wt_data_out),
+        .dbg_wt_data_ready(dbg_wt_data_ready),
+        .dbg_conv_valid_in(dbg_conv_valid_in),
+        .dbg_conv_last_channel(dbg_conv_last_channel),
+        .dbg_pixel_d2(dbg_pixel_d2),
+        .dbg_conv_outs(dbg_conv_outs),
+        .dbg_conv_data_valid(dbg_conv_data_valid),
+        .dbg_kw_row0(dbg_kw_row0),
+        .dbg_kw_row1(dbg_kw_row1),
+        .dbg_kw_row2(dbg_kw_row2),
+        .dbg_kw_delay_count(dbg_kw_delay_count),
+        .dbg_kw_total_delay(dbg_kw_total_delay),
+        .dbg_kw_priming_done(dbg_kw_priming_done),
+        .dbg_kw_col_cnt(dbg_kw_col_cnt),
+        .dbg_kw_col_valid(dbg_kw_col_valid),
+        .dbg_kw_delay_depth(dbg_kw_delay_depth),
+        .dbg_kw_vectors_per_row(dbg_kw_vectors_per_row),
+        .dbg_data_out(dbg_data_out),
+        .dbg_data_out_valid(dbg_data_out_valid),
+        .dbg_output_count(dbg_output_count),
+        .dbg_quant_packed(dbg_quant_packed),
+        .dbg_quant_valid(dbg_quant_valid),
+        .dbg_maxpool_out(dbg_maxpool_out),
+        .dbg_maxpool_valid(dbg_maxpool_valid)
+`endif
+    );
 
     // ── Clock ──
     initial clk = 0;
@@ -274,6 +340,10 @@ module tb_conv_top_e2e;
         end
     endtask
 
+// ════════════════════════════════════════════════════════════════
+// Debug monitors - only for RTL simulation (not post-synthesis)
+// ════════════════════════════════════════════════════════════════
+`ifndef POST_SYNTH
     // ── Capture pixel_d2 at posedge when conv_valid_in fires ──
     logic [63:0] first_pixel_d2 [0:2][0:2];
     logic [63:0] row1_pixel_d2 [0:2][0:2];  // For position [1,0]
@@ -417,6 +487,7 @@ module tb_conv_top_e2e;
             dbg_mp_outcnt++;
         end
     end
+`endif // POST_SYNTH
 
     initial begin
         $dumpfile("tb_conv_top_e2e.vcd");
@@ -438,6 +509,7 @@ module tb_conv_top_e2e;
         load_all_biases();
 
         // Process output group 0
+`ifndef POST_SYNTH
         dbg_conv_cnt = 0;
         dbg_conv_out_cnt = 0;
         capture_conv_cnt = 0;
@@ -445,6 +517,7 @@ module tb_conv_top_e2e;
         dbg_mp_outcnt = 0;
         dbg_quant_in_cnt = 0;
         dbg_quant_out_cnt = 0;
+`endif
         run_output_group(0);
 
         // Flush between output groups (reset kernel window / delay line state)
@@ -453,6 +526,7 @@ module tb_conv_top_e2e;
         flush_pipeline();
 
         // Process output group 1
+`ifndef POST_SYNTH
         dbg_conv_cnt = 0;
         dbg_conv_out_cnt = 0;
         capture_conv_cnt = 0;
@@ -460,6 +534,7 @@ module tb_conv_top_e2e;
         dbg_mp_outcnt = 0;
         dbg_quant_in_cnt = 0;
         dbg_quant_out_cnt = 0;
+`endif
         run_output_group(1);
 
         #200;
