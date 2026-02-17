@@ -3,7 +3,9 @@ module conv_controller #(
     parameter BIAS_ADDR_WIDTH = 7,
     parameter WT_LATENCY      = 3,
     parameter CONV_PE_PIPE    = 3,
-    parameter PIPE_DEPTH      = WT_LATENCY + CONV_PE_PIPE + 1  // weight read + multiply/sum pipeline + accumulator output
+    parameter QUANT_LATENCY   = 4,
+    parameter MAXPOOL_LATENCY = 4,
+    parameter PIPE_DEPTH      = WT_LATENCY + CONV_PE_PIPE + 1 + QUANT_LATENCY + MAXPOOL_LATENCY
 )(
     input  logic        clk,
     input  logic        rst,

@@ -31,7 +31,8 @@ module lineBuffer #(
                 // Bypass: just a register = 1 cycle delay
                 o_data <= pixel;
             end else begin
-                // Buffer of (curr_width-1) entries + registered output = curr_width total
+                // Circular buffer with curr_width entries, read-before-write
+                // Input at cycle N appears at output at cycle N+curr_width
                 o_data <= line[wrPtr];
                 line[wrPtr] <= pixel;
 

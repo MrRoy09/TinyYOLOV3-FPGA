@@ -9,7 +9,18 @@ module kernelWindow #(
     input logic [15:0] img_width,
     input logic [63:0] pixel_in,
     output logic [63:0] window[0:2][0:2],
-    output logic dout_valid
+    output logic dout_valid,
+    // Debug outputs
+    output logic [63:0] dbg_row0,
+    output logic [63:0] dbg_row1,
+    output logic [63:0] dbg_row2,
+    output logic [31:0] dbg_delay_count,
+    output logic [31:0] dbg_total_delay,
+    output logic        dbg_priming_done,
+    output logic [31:0] dbg_col_cnt,
+    output logic        dbg_col_valid,
+    output logic [7:0]  dbg_delay_depth,
+    output logic [31:0] dbg_vectors_per_row
 );
 
 logic [63:0] row0, row1, row2;
@@ -31,7 +42,12 @@ logic        col_valid;
 
 assign delay_depth = in_channels >> 3;
 assign vectors_per_row = img_width * delay_depth;
-assign row2 = pixel_in;
+
+// Register row2 to match lineBuffer timing (both are registered outputs)
+always_ff @(posedge clk) begin
+    if (data_valid)
+        row2 <= pixel_in;
+end
 
 // Pipeline depth = 2*vectors_per_row + 2*delay_depth.
 // Subtract 1 because priming_done is registered (takes effect
@@ -77,10 +93,16 @@ lineBuffer LineBuffer1 (
     .o_data(row1)
 );
 
+// LineBuffer0 takes row1 (which already has 1 extra cycle of delay from
+// LineBuffer1's registered output). To get exactly 2*vectors_per_row total
+// delay for row0 (relative to the 1-cycle delayed row2), we need
+// LineBuffer0 to provide (vectors_per_row - 1) buffer cycles + 1 register
+// cycle = vectors_per_row cycles. This compensates for the cascaded
+// registered output latency.
 lineBuffer LineBuffer0 (
     .clk(clk),
     .rst(rst),
-    .curr_width(vectors_per_row),
+    .curr_width(vectors_per_row - 1),
     .pixel(row1),
     .data_valid(data_valid),
     .o_data(row0)
@@ -118,6 +140,16 @@ delayLine DelayLine0_0 (
 );
 assign window[0][2] = row0;
 
-
+// Debug outputs
+assign dbg_row0 = row0;
+assign dbg_row1 = row1;
+assign dbg_row2 = row2;
+assign dbg_delay_count = delay_count;
+assign dbg_total_delay = total_delay;
+assign dbg_priming_done = priming_done;
+assign dbg_col_cnt = col_cnt;
+assign dbg_col_valid = col_valid;
+assign dbg_delay_depth = delay_depth;
+assign dbg_vectors_per_row = vectors_per_row;
 
 endmodule

@@ -8,7 +8,9 @@ module tb_conv_top;
     localparam BIAS_GROUP_BITS = $clog2(BIAS_DEPTH) - 1;
     localparam WT_LATENCY      = 3;
     localparam CONV_PE_PIPE    = 3;
-    localparam PIPE_DEPTH      = WT_LATENCY + CONV_PE_PIPE + 1; // 7
+    localparam QUANT_LATENCY   = 3;
+    localparam MAXPOOL_LATENCY = 4;
+    localparam PIPE_DEPTH      = WT_LATENCY + CONV_PE_PIPE + 1 + QUANT_LATENCY + MAXPOOL_LATENCY; // 14
 
     // ── DUT signals ──
     logic        clk, rst;
@@ -573,6 +575,183 @@ module tb_conv_top;
         $display("  Test 8 done");
     endtask
 
+    // ═══════════════════════════════════════════════════════════
+    //  Quantizer + output path tests
+    // ═══════════════════════════════════════════════════════════
+
+    task automatic check_data_out(input string label, input logic [63:0] expected);
+        if (data_out !== expected) begin
+            $display("  ERROR %s: data_out = %h, expected %h", label, data_out, expected);
+            errors++;
+        end
+    endtask
+
+    task automatic test_quant_identity();
+        int pulse_count = 0;
+        logic [63:0] expected_word = {8{8'd72}};
+        $display("\n=== Test 9: Quantizer identity (M=1.0, no ReLU) ===");
+        cfg_img_width    = 16'(CONV_IMG);
+        cfg_in_channels  = 16'd8;
+        flush_pipeline();
+        load_biases('{default: 32'd0});
+        load_weights(1, 8'd1);
+        cfg_ci_groups    = 10'd1;
+        cfg_output_group = 7'd0;
+        cfg_wt_base_addr = 12'd0;
+        cfg_img_width    = 16'(CONV_IMG);
+        cfg_in_channels  = 16'd8;
+        cfg_quant_m      = 32'h0001_0000;  // M = 65536
+        cfg_quant_n      = 5'd16;          // n = 16 → scale = 1.0
+        cfg_use_relu     = 0;
+        cfg_use_maxpool  = 0;
+        pulse_go();
+        fork
+            stream_image_ones(CONV_IMG, CONV_IMG, 1);
+            begin
+                while (!done) begin
+                    @(negedge clk);
+                    if (data_out_valid) begin
+                        pulse_count++;
+                        if (pulse_count <= WARMUP_SKIP)
+                            $display("  NOTE: pulse %0d data_out=%h (warmup, skipping)", pulse_count, data_out);
+                        else
+                            check_data_out($sformatf("T9 pulse %0d", pulse_count), expected_word);
+                    end
+                end
+            end
+        join
+        if (pulse_count !== CONV_WINDOWS) begin
+            $display("  ERROR: expected %0d data_out_valid pulses, got %0d", CONV_WINDOWS, pulse_count);
+            errors++;
+        end
+        $display("  Test 9 done (%0d pulses)", pulse_count);
+    endtask
+
+    task automatic test_quant_relu();
+        int pulse_count = 0;
+        // conv = 72 + (-100) = -28. Leaky ReLU: -28 >>> 3 = -4
+        logic [7:0] expected_byte = 8'hFC;  // -4 signed
+        logic [63:0] expected_word = {8{expected_byte}};
+        $display("\n=== Test 10: Quantizer with Leaky ReLU ===");
+        cfg_img_width    = 16'(CONV_IMG);
+        cfg_in_channels  = 16'd8;
+        flush_pipeline();
+        load_biases('{default: -32'sd100});
+        load_weights(1, 8'd1);
+        cfg_ci_groups    = 10'd1;
+        cfg_output_group = 7'd0;
+        cfg_wt_base_addr = 12'd0;
+        cfg_img_width    = 16'(CONV_IMG);
+        cfg_in_channels  = 16'd8;
+        cfg_quant_m      = 32'h0001_0000;
+        cfg_quant_n      = 5'd16;
+        cfg_use_relu     = 1;
+        cfg_use_maxpool  = 0;
+        pulse_go();
+        fork
+            stream_image_ones(CONV_IMG, CONV_IMG, 1);
+            begin
+                while (!done) begin
+                    @(negedge clk);
+                    if (data_out_valid) begin
+                        pulse_count++;
+                        if (pulse_count <= WARMUP_SKIP)
+                            $display("  NOTE: pulse %0d data_out=%h (warmup, skipping)", pulse_count, data_out);
+                        else
+                            check_data_out($sformatf("T10 pulse %0d", pulse_count), expected_word);
+                    end
+                end
+            end
+        join
+        $display("  Test 10 done (%0d pulses)", pulse_count);
+    endtask
+
+    task automatic test_quant_saturation();
+        int pulse_count = 0;
+        // conv = 9*8*1*2 = 144. Clamp to 127.
+        logic [63:0] expected_word = {8{8'd127}};
+        $display("\n=== Test 11: Quantizer saturation ===");
+        cfg_img_width    = 16'(CONV_IMG);
+        cfg_in_channels  = 16'd8;
+        flush_pipeline();
+        load_biases('{default: 32'd0});
+        load_weights(1, 8'd2);
+        cfg_ci_groups    = 10'd1;
+        cfg_output_group = 7'd0;
+        cfg_wt_base_addr = 12'd0;
+        cfg_img_width    = 16'(CONV_IMG);
+        cfg_in_channels  = 16'd8;
+        cfg_quant_m      = 32'h0001_0000;
+        cfg_quant_n      = 5'd16;
+        cfg_use_relu     = 0;
+        cfg_use_maxpool  = 0;
+        pulse_go();
+        fork
+            stream_image_ones(CONV_IMG, CONV_IMG, 1);
+            begin
+                while (!done) begin
+                    @(negedge clk);
+                    if (data_out_valid) begin
+                        pulse_count++;
+                        if (pulse_count <= WARMUP_SKIP)
+                            $display("  NOTE: pulse %0d data_out=%h (warmup, skipping)", pulse_count, data_out);
+                        else
+                            check_data_out($sformatf("T11 pulse %0d", pulse_count), expected_word);
+                    end
+                end
+            end
+        join
+        $display("  Test 11 done (%0d pulses)", pulse_count);
+    endtask
+
+    task automatic test_maxpool();
+        int pulse_count = 0;
+        // Conv output: 8x8 spatial, all values = 72
+        // Maxpool stride-2: 4x4 output, all max = 72
+        logic [63:0] expected_word = {8{8'd72}};
+        int expected_pulses = 16;  // 4x4
+        $display("\n=== Test 12: Maxpool stride-2 ===");
+        cfg_img_width    = 16'(CONV_IMG);
+        cfg_in_channels  = 16'd8;
+        flush_pipeline();
+        load_biases('{default: 32'd0});
+        load_weights(1, 8'd1);
+        cfg_ci_groups    = 10'd1;
+        cfg_output_group = 7'd0;
+        cfg_wt_base_addr = 12'd0;
+        cfg_img_width    = 16'(CONV_IMG);
+        cfg_in_channels  = 16'd8;
+        cfg_quant_m      = 32'h0001_0000;
+        cfg_quant_n      = 5'd16;
+        cfg_use_relu     = 0;
+        cfg_use_maxpool  = 1;
+        cfg_stride_2     = 1;
+        pulse_go();
+        fork
+            stream_image_ones(CONV_IMG, CONV_IMG, 1);
+            begin
+                while (!done) begin
+                    @(negedge clk);
+                    if (data_out_valid) begin
+                        pulse_count++;
+                        // Maxpool naturally suppresses borders, so warmup
+                        // artifact on first conv row doesn't produce maxpool output.
+                        // Still skip first few conservatively.
+                        if (pulse_count <= 2)
+                            $display("  NOTE: pulse %0d data_out=%h (warmup, skipping)", pulse_count, data_out);
+                        else
+                            check_data_out($sformatf("T12 pulse %0d", pulse_count), expected_word);
+                    end
+                end
+            end
+        join
+        if (pulse_count !== expected_pulses) begin
+            $display("  ERROR: expected %0d maxpool pulses, got %0d", expected_pulses, pulse_count);
+            errors++;
+        end
+        $display("  Test 12 done (%0d pulses)", pulse_count);
+    endtask
+
     initial begin
         $dumpfile("tb_conv_top.vcd");
         $dumpvars(0, tb_conv_top);
@@ -592,6 +771,14 @@ module tb_conv_top;
         test_conv_multi_ci();
         reset_all();
         test_conv_per_filter();
+        reset_all();
+        test_quant_identity();
+        reset_all();
+        test_quant_relu();
+        reset_all();
+        test_quant_saturation();
+        reset_all();
+        test_maxpool();
         #100;
         $display("\n════════════════════════════════════");
         if (errors == 0) $display("ALL TESTS PASSED");

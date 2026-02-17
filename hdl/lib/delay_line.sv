@@ -28,12 +28,21 @@ always_ff @(posedge clk) begin
         if(delay_depth <= 1) begin
             // Bypass memory: just a register = 1 cycle delay
             dout <= din;
+        end else if(delay_depth == 2) begin
+            // Special case: delay_depth=2 means we want 2 cycles total delay.
+            // Due to registered sampling, a simple register gives exactly 1 cycle,
+            // so we need 1 additional cycle from the buffer.
+            // Use a single-entry buffer (delay_depth-1 = 1 entry).
+            dout <= mem[0];
+            mem[0] <= din;
         end else begin
-            // Buffer of (delay_depth-1) entries + registered output = delay_depth total
+            // Circular buffer with (delay_depth-1) entries, read-before-write.
+            // The registered sampling adds 1 cycle, so total = (delay_depth-1) + 1 = delay_depth.
+            // Input at cycle N appears at output at cycle N+delay_depth.
             dout <= mem[ptr];
             mem[ptr] <= din;
 
-            if(ptr >= delay_depth - 1) ptr <= '0;
+            if(ptr >= delay_depth - 2) ptr <= '0;
             else ptr <= ptr + 1'b1;
         end
     end
