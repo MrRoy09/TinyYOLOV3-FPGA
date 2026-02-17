@@ -9,6 +9,19 @@ module lineBuffer #(
     output logic [63:0]  o_data
 );
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Local config register - break timing path for curr_width comparison
+    // curr_width is stable before processing, so registering is safe.
+    // ═══════════════════════════════════════════════════════════════════════
+    (* max_fanout = 32 *) logic [31:0] curr_width_r;
+
+    always_ff @(posedge clk) begin
+        if (rst)
+            curr_width_r <= '0;
+        else
+            curr_width_r <= curr_width;
+    end
+
     // Attribute to force Block RAM implementation
     (* ram_style = "block" *)
     logic [63:0] line [MAX_WIDTH-1:0];
@@ -27,7 +40,7 @@ module lineBuffer #(
             wrPtr  <= '0;
             o_data <= '0;
         end else if (data_valid) begin
-            if (curr_width <= 1) begin
+            if (curr_width_r <= 1) begin
                 // Bypass: just a register = 1 cycle delay
                 o_data <= pixel;
             end else begin
@@ -36,7 +49,7 @@ module lineBuffer #(
                 o_data <= line[wrPtr];
                 line[wrPtr] <= pixel;
 
-                if (wrPtr >= curr_width - 1)
+                if (wrPtr >= curr_width_r - 1)
                     wrPtr <= '0;
                 else
                     wrPtr <= wrPtr + 1'b1;

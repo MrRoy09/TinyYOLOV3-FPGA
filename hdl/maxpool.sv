@@ -13,10 +13,35 @@ module maxPool #()
     output logic valid_out
 );
 
+// ════════════════════════════════════════════════════════════════════════════
+// Local config registers - break timing path from AXI config to LineBuffer
+// These configs are stable before processing starts, so registering is safe.
+// ════════════════════════════════════════════════════════════════════════════
+(* max_fanout = 32 *) logic [15:0] img_width_r;
+(* max_fanout = 32 *) logic [15:0] channels_r;
+(* max_fanout = 32 *) logic        stride_2_r;
+(* max_fanout = 32 *) logic [7:0]  ch_limit_r;
+(* max_fanout = 32 *) logic [31:0] vectors_per_row_r;
+
+always_ff @(posedge clk) begin
+    if (rst) begin
+        img_width_r       <= '0;
+        channels_r        <= '0;
+        stride_2_r        <= '0;
+        ch_limit_r        <= '0;
+        vectors_per_row_r <= '0;
+    end else begin
+        img_width_r <= img_width;
+        channels_r  <= channels;
+        stride_2_r  <= stride_2;
+        ch_limit_r  <= channels_r >> 3;
+        vectors_per_row_r <= (stride_2_r ? img_width_r >> 1 : img_width_r) * ch_limit_r;
+    end
+end
+
 logic [12:0] ch_cnt;
 logic [15:0] col_cnt;
 logic [15:0] row_cnt;
-logic [7:0] ch_limit;
 
 logic [63:0] prev_col;
 logic [63:0] h_max;
@@ -36,21 +61,16 @@ logic [63:0] h_max_for_vmax;
 logic lb_en_q;
 logic [15:0] row_at_lben;
 
-logic [31:0] vectors_per_row;
-
-assign ch_limit = channels >> 3;
-assign vectors_per_row = (stride_2 ? img_width >> 1 : img_width) * ch_limit;
-
-// ── Input position counters ──
+// ── Input position counters (use registered configs) ──
 always_ff @(posedge clk) begin
     if(rst) begin
         ch_cnt <= 0;
         row_cnt <= 0;
         col_cnt <= 0;
     end else if (valid_in) begin
-        if (ch_cnt == ch_limit - 1) begin
+        if (ch_cnt == ch_limit_r - 1) begin
             ch_cnt <= 0;
-            if (col_cnt == img_width -1 ) begin
+            if (col_cnt == img_width_r - 1) begin
                 col_cnt <= 0;
                 row_cnt <= row_cnt + 1;
             end else begin
@@ -73,7 +93,8 @@ always_ff @(posedge clk) begin
         row_q     <= row_cnt;
 
         // Latch h_max at odd columns (stride-2) or every column (stride-1).
-        if (valid_in && (stride_2 ? col_cnt[0] : 1'b1))
+        // Use registered stride_2_r for timing closure.
+        if (valid_in && (stride_2_r ? col_cnt[0] : 1'b1))
             h_max_latched <= h_max;
     end
 end
@@ -82,7 +103,8 @@ end
 assign h_max = vec_max(prev_col, data_in);
 
 // ── lb_en: triggers LB write and h_max_for_vmax capture ──
-assign lb_en = v_in_q && (stride_2 ? col_q[0] : 1'b1);
+// Use registered stride_2_r for timing closure.
+assign lb_en = v_in_q && (stride_2_r ? col_q[0] : 1'b1);
 
 // ── Stage 2: capture h_max_latched at lb_en, delay lb_en by 1 ──
 // When lb_en fires, h_max_latched is still valid (set at odd col,
@@ -108,13 +130,14 @@ assign v_max = vec_max(h_max_for_vmax, prev_row);
 
 // ── Output register ──
 // valid_out fires 1 cycle after lb_en (= lb_en_q), gated by row parity.
+// Use registered stride_2_r for timing closure.
 always_ff @(posedge clk) begin
     if(rst) begin
         data_out <= 0;
         valid_out <= 0;
     end else begin
         data_out <= v_max;
-        if(stride_2)
+        if(stride_2_r)
             valid_out <= lb_en_q && row_at_lben[0];
         else
             valid_out <= lb_en_q && (row_at_lben > 0);
@@ -145,14 +168,14 @@ always_ff @(posedge clk) begin
         prev_col    <= '0;
         col_buf_ptr <= '0;
     end else if (valid_in) begin
-        if (ch_limit <= 8'd1) begin
+        if (ch_limit_r <= 8'd1) begin
             // Direct 1-cycle delay (bypass circular buffer)
             prev_col <= data_in;
         end else begin
             // Circular buffer: ch_limit-1 entries + 1 output reg = ch_limit total
             prev_col             <= col_buf[col_buf_ptr];
             col_buf[col_buf_ptr] <= data_in;
-            if (col_buf_ptr >= ch_limit - 2)
+            if (col_buf_ptr >= ch_limit_r - 2)
                 col_buf_ptr <= '0;
             else
                 col_buf_ptr <= col_buf_ptr + 1'b1;
@@ -161,10 +184,11 @@ always_ff @(posedge clk) begin
 end
 
 // ── Row line buffer ──
+// Use registered vectors_per_row_r for timing closure.
 lineBuffer LineBuffer1 (
     .clk(clk),
     .rst(rst),
-    .curr_width(vectors_per_row),
+    .curr_width(vectors_per_row_r),
     .pixel(h_max_latched),
     .data_valid(lb_en),
     .o_data(prev_row)
