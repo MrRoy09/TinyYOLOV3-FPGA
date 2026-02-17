@@ -341,3 +341,551 @@ Cycle 3: weights, pixels, conv_valid_in, conv_last_channel all arrive at conv_pe
 **DRAIN depth** = `WT_LATENCY(3) + CONV_PE_PIPE(3) + accumulator(1)` = **7 cycles**.
 
 **conv_top pixel delay requirement:** The `pixels[0:2][0:2]` bus from `kernel_window` output must be delayed by `WT_LATENCY` (3) cycles before reaching `conv_3x3` inputs. This is a simple shift register in `conv_top` wiring — 9 × 64-bit × 3 stages. This ensures pixels and weights arrive at the multiply stage on the same clock edge.
+
+---
+
+## 1x1 Convolution Mode
+
+The architecture supports 1x1 convolution by reusing the existing 3x3 `conv_pe` infrastructure. This eliminates the need for a separate 1x1 datapath, providing identical timing and simpler debugging.
+
+### Concept
+
+A 1x1 convolution is mathematically equivalent to a 3x3 convolution where:
+1. Only the **center spatial position** (position 4) has non-zero weights
+2. Only the **center pixel** of the 3×3 window contributes to the output
+
+By packing 1x1 weights into the center position of the 576-bit weight format and feeding only the center pixel to `conv_3x3`, the same pipeline computes 1x1 convolutions with zero additional RTL.
+
+### Weight Packing for 1x1
+
+The `conv_pe` extracts weights using:
+```systemverilog
+weight_byte = weights[(i*64 + j*8) +: 8];  // i = spatial position (0-8), j = input channel (0-7)
+```
+
+| Spatial Position | 3×3 Grid Location | Bit Range |
+|------------------|-------------------|-----------|
+| 0 | [0][0] top-left | [63:0] |
+| 1 | [0][1] top-center | [127:64] |
+| 2 | [0][2] top-right | [191:128] |
+| 3 | [1][0] mid-left | [255:192] |
+| **4** | **[1][1] center** | **[319:256]** |
+| 5 | [1][2] mid-right | [383:320] |
+| 6 | [2][0] bot-left | [447:384] |
+| 7 | [2][1] bot-center | [511:448] |
+| 8 | [2][2] bot-right | [575:512] |
+
+**For 1x1:** Pack the 8 input channel weights into bits [319:256] (spatial position 4). All other bits must be zero.
+
+**URAM storage format (72 bits per URAM):**
+- Each URAM stores 9 spatial positions × 8 bits
+- bits [7:0] = spatial 0, bits [15:8] = spatial 1, ..., bits [39:32] = spatial 4, ..., bits [71:64] = spatial 8
+
+**1x1 weight packing:**
+```python
+# For 1x1: pack weight into spatial position 4 of each URAM
+for cig in range(ci_groups):
+    for bank in range(8):  # output channel
+        for uram in range(8):  # input channel
+            ci = cig * 8 + uram
+            w_val = int(weights[bank, ci]) & 0xFF
+            word = w_val << 32  # bits [39:32] = spatial position 4
+            write_to_uram(word)
+```
+
+### Pixel Routing for 1x1
+
+In `conv_top`, a `pixel_mux` routes pixels based on `cfg_kernel_1x1`:
+
+```systemverilog
+always_comb begin
+    if (cfg_kernel_1x1) begin
+        // 1x1 mode: only center pixel, all others zero
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
+                pixel_mux[r][c] = (r == 1 && c == 1) ? pixel_1x1_d3 : 64'b0;
+    end else begin
+        // 3x3 mode: use full kernel window
+        pixel_mux = pixel_3x3_d2;
+    end
+end
+```
+
+This ensures that only `pixels[1][1]` (center) is non-zero, which multiplies with the only non-zero weights at position 4.
+
+### Pixel Delay Difference: 4 Cycles for 1x1
+
+**Critical timing difference:** The 1x1 pixel delay must be **4 cycles**, not 3.
+
+The controller's valid delay has two components:
+1. `valid_raw` latency: 1 cycle (NBA in controller's always_ff)
+2. `valid_dly` shift register: 3 cycles (WT_LATENCY)
+3. **Total: 4 cycles**
+
+For 3x3 mode, the kernel_window's `kw_dout_valid` already accounts for its internal latency relative to `kw_window` data, so a 3-cycle pixel delay works.
+
+For 1x1 mode, `pixel_in_valid` is used directly (no kernel_window), so the pixel delay must match the full 4-cycle valid delay:
+
+```systemverilog
+// 1x1 pixel delay: 4 stages (matches 1 + WT_LATENCY = 4 cycle valid delay)
+logic [63:0] pixel_1x1_d0, pixel_1x1_d1, pixel_1x1_d2, pixel_1x1_d3;
+
+always_ff @(posedge clk) begin
+    pixel_1x1_d0 <= pixel_in;
+    pixel_1x1_d1 <= pixel_1x1_d0;
+    pixel_1x1_d2 <= pixel_1x1_d1;
+    pixel_1x1_d3 <= pixel_1x1_d2;
+end
+```
+
+### Configuration Differences
+
+| Parameter | 3x3 Mode | 1x1 Mode |
+|-----------|----------|----------|
+| `cfg_kernel_1x1` | 0 | 1 |
+| `pixel_valid_mux` source | `kw_dout_valid` | `pixel_in_valid` |
+| Pixel delay stages | 3 (`pixel_3x3_d2`) | 4 (`pixel_1x1_d3`) |
+| Weight spatial positions used | All 9 | Only position 4 |
+| Kernel window | Active (priming delay) | Bypassed |
+| MaxPool `img_width` | `cfg_img_width - 2` | `cfg_img_width` |
+
+### Benefits of Unified 1x1/3x3 Pipeline
+
+1. **Single timing path** — No separate 1x1 pipeline to debug
+2. **Identical latency** — Both modes use the same `conv_3x3` → quantizer → maxpool chain
+3. **Reduced RTL** — No `conv_1x1` or `conv_1x1_pe` modules needed
+4. **Proven correctness** — Reuses the already-verified 3x3 pipeline
+
+---
+
+## Upsampling (CPU-Side Operation)
+
+YOLOv3-tiny uses 2× nearest-neighbor upsampling to increase spatial resolution (13×13 → 26×26) before the second detection head.
+
+### Why CPU, Not FPGA
+
+| Factor | FPGA | CPU |
+|--------|------|-----|
+| Compute complexity | Zero (just pixel duplication) | Zero |
+| FPGA resource cost | State machine, address gen, buffers | None |
+| Implementation time | Hours of RTL | 10 lines of C |
+| Performance | ~169 cycles | <1ms on ARM Cortex-A53 |
+
+**Upsampling is memory-bound, not compute-bound.** The FPGA's parallel MACs provide zero benefit for simple pixel copying.
+
+### Implementation
+
+```c
+// Nearest-neighbor 2x upsample: H×W×C → 2H×2W×C
+void upsample_2x(int8_t *src, int8_t *dst, int H, int W, int C) {
+    for (int h = 0; h < H; h++) {
+        for (int w = 0; w < W; w++) {
+            for (int c = 0; c < C; c++) {
+                int8_t val = src[(h*W + w)*C + c];
+                dst[((2*h  )*(2*W) + (2*w  ))*C + c] = val;
+                dst[((2*h  )*(2*W) + (2*w+1))*C + c] = val;
+                dst[((2*h+1)*(2*W) + (2*w  ))*C + c] = val;
+                dst[((2*h+1)*(2*W) + (2*w+1))*C + c] = val;
+            }
+        }
+    }
+}
+```
+
+---
+
+## Concatenation (Zero-Cost DMA Operation)
+
+YOLOv3-tiny concatenates upsampled deep features (26×26×256) with shallow features (26×26×128) along the channel dimension, producing a 26×26×384 tensor.
+
+### Key Insight: Avoid Physical Concatenation
+
+**Concatenation requires zero computation and zero data movement** with smart DMA programming. Instead of copying both tensors into an interleaved buffer, stream them sequentially to the conv hardware.
+
+### Sequential Streaming Approach
+
+The conv accumulator doesn't care that channels came from different memory regions. For each spatial position, stream channels from both sources:
+
+```
+Pixel (h,w): A[0:7], A[8:15], ..., A[248:255], B[0:7], B[8:15], ..., B[120:127]
+             └──── 32 ci_groups from A ────┘  └──── 16 ci_groups from B ────┘
+```
+
+The conv hardware sees 48 continuous ci_groups, unaware they originate from two separate buffers.
+
+### CPU Driver Implementation
+
+```c
+void run_conv_after_concat(void *feature_a, int ca,    // 26×26×256
+                           void *feature_b, int cb) {  // 26×26×128
+
+    int total_ci_groups = (ca + cb) / 8;  // 48 groups
+
+    for (int og = 0; og < co_groups; og++) {
+        load_weights(og, total_ci_groups);  // Weights for all 384 input channels
+        configure_conv(total_ci_groups, og);
+
+        // DMA streams A's channels, then B's channels per pixel
+        start_dma_concat_stream(feature_a, ca, feature_b, cb, H, W);
+
+        pulse_go();
+        wait_done();
+    }
+}
+```
+
+### DMA Scatter-Gather Pattern
+
+For NHWC layout, the DMA must interleave reads from both buffers:
+
+```
+For each row h:
+    For each column w:
+        Transfer A[h,w,0:ca-1]    // ca/8 beats from buffer A
+        Transfer B[h,w,0:cb-1]    // cb/8 beats from buffer B
+```
+
+This can be achieved with:
+1. **Scatter-gather DMA** with a descriptor list alternating between A and B
+2. **CPU-managed streaming** that switches source buffers
+3. **Two DMA channels** with coordinated handoff
+
+### Comparison
+
+| Approach | Memory Bandwidth | FPGA Resources | Latency |
+|----------|------------------|----------------|---------|
+| Physical copy (CPU) | 2× (read + write both) | None | ~2ms |
+| FPGA concat unit | 2× | State machine, buffers | ~1ms |
+| **Sequential DMA** | **1× (read only)** | **None** | **Zero overhead** |
+
+**Recommendation:** Implement concatenation as a DMA addressing pattern, not a data transformation.
+
+---
+
+## YOLOv3-tiny Layer Execution Summary
+
+| Layer | Operation | Executor | Notes |
+|-------|-----------|----------|-------|
+| 0-5 | Conv + MaxPool | FPGA | Standard 3×3 conv |
+| 6 | Conv | FPGA | No pooling |
+| 7 | Conv 1×1 | FPGA | Uses center-position weight packing |
+| 8 | Conv | FPGA | Detection head 1 output |
+| 9 | Route | CPU | Just pointer selection |
+| 10 | Conv 1×1 | FPGA | |
+| 11 | Upsample 2× | CPU | Nearest-neighbor pixel duplication |
+| 12 | Route (concat) | DMA | Sequential streaming from 2 buffers |
+| 13 | Conv | FPGA | |
+| 14 | Conv 1×1 | FPGA | Detection head 2 output |
+
+**FPGA handles:** Convolution (3×3 and 1×1), quantization, maxpool
+**CPU handles:** Upsampling, route/concat addressing, layer sequencing, DMA setup
+
+---
+
+## AXI Integration Architecture
+
+The design uses the Xilinx RTL Kernel Wizard to generate AXI infrastructure, providing a standard interface for Vitis integration on the Kria KV260.
+
+### File Structure
+
+```
+hdl/
+├── TinyYOLOV3_HW.v                    # Top-level AXI kernel
+├── TinyYOLOV3_HW_control_s_axi.v      # AXI-Lite register interface (generated)
+├── TinyYOLOV3_HW_conv_wrapper.sv      # Wire↔logic adapter wrapper
+├── axi_conv_integration.sv            # AXI-Stream ↔ conv_top bridge + FSM
+│
+├── conv_top.sv                        # Convolution datapath top
+├── conv_controller.sv                 # Convolution FSM
+├── conv_3x3.sv                        # 8 parallel conv PEs
+├── conv_pe.sv                         # Single processing element
+├── weight_manager.sv                  # URAM-based weight storage
+├── bias_store.sv                      # BRAM-based bias storage
+├── kernelWindow.sv                    # 3×3 sliding window generator
+├── quantizer.sv                       # INT32→INT8 scaling + ReLU
+├── maxPool.sv                         # 2×2 max pooling
+├── lineBuffer.sv                      # Line buffer for kernel window
+└── delayLine.sv                       # Configurable delay line
+```
+
+### Module Hierarchy
+
+```
+TinyYOLOV3_HW                              # Top-level RTL kernel
+├── TinyYOLOV3_HW_control_s_axi            # AXI-Lite slave (11 cfg registers + control)
+└── TinyYOLOV3_HW_conv_wrapper             # Interface adapter
+    └── axi_conv_integration               # AXI-Stream bridge + loading FSM
+        └── conv_top                       # Convolution datapath
+            ├── bias_store                 # 128-bit×256 BRAM, dual-port
+            ├── weight_manager             # 8 banks × 8 URAMs
+            ├── conv_controller            # IDLE→LOAD_BIAS→CONV→DRAIN FSM
+            ├── kernelWindow               # 3×3 sliding window
+            ├── conv_3x3                   # 8 parallel output channels
+            │   └── conv_pe [×8]           # 72 MACs each
+            ├── quantizer [×8]             # Per-channel quantization
+            └── maxPool                    # Optional 2×2 pooling
+```
+
+### AXI Interfaces
+
+| Interface | Type | Width | Direction | Purpose |
+|-----------|------|-------|-----------|---------|
+| `s_axi_control` | AXI4-Lite Slave | 32-bit | CPU→FPGA | Configuration registers |
+| `s_axis_weights` | AXI4-Stream Slave | 128-bit | DMA→FPGA | Weight loading |
+| `s_axis_bias` | AXI4-Stream Slave | 128-bit | DMA→FPGA | Bias loading |
+| `s_axis_pixels` | AXI4-Stream Slave | 64-bit | DMA→FPGA | Input pixel stream |
+| `m_axis_output` | AXI4-Stream Master | 64-bit | FPGA→DMA | Output pixel stream |
+
+### Signal Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           TinyYOLOV3_HW (Top)                               │
+│                                                                             │
+│   ┌─────────────────────────┐         ┌───────────────────────────────────┐ │
+│   │  TinyYOLOV3_HW_control  │         │     TinyYOLOV3_HW_conv_wrapper    │ │
+│   │      _s_axi             │         │                                   │ │
+│   │                         │  cfg_*  │  ┌─────────────────────────────┐  │ │
+│   │  AXI-Lite ◄────────────────────────►│     axi_conv_integration     │  │ │
+│   │  Registers              │         │  │                             │  │ │
+│   │                         │ap_start │  │  ┌────────────────────────┐ │  │ │
+│   │  0x00: AP_CTRL ─────────┼─────────┼──┼─►│       conv_top         │ │  │ │
+│   │  0x10: cfg_ci_groups    │         │  │  │                        │ │  │ │
+│   │  0x18: cfg_output_group │ ap_done │  │  │  bias_store            │ │  │ │
+│   │  0x20: cfg_wt_base_addr │◄────────┼──┼──│  weight_manager        │ │  │ │
+│   │  0x28: cfg_in_channels  │         │  │  │  conv_3x3              │ │  │ │
+│   │  0x30: cfg_img_width    │         │  │  │  quantizer             │ │  │ │
+│   │  0x38: cfg_use_maxpool  │         │  │  │  maxPool               │ │  │ │
+│   │  0x40: cfg_stride_2     │         │  │  └────────────────────────┘ │  │ │
+│   │  0x48: cfg_quant_m      │         │  │             ▲               │  │ │
+│   │  0x50: cfg_quant_n      │         │  │   wt_wr_*   │  bias_wr_*   │  │ │
+│   │  0x58: cfg_use_relu     │         │  │      ▲      │      ▲       │  │ │
+│   │  0x60: cfg_kernel_1x1   │         │  │      │      │      │       │  │ │
+│   └─────────────────────────┘         │  │  ┌──┴──────┴──────┴────┐   │  │ │
+│                                       │  │  │  Weight/Bias FSMs   │   │  │ │
+│                                       │  │  │  (addr_rst, wr_en)  │   │  │ │
+│   s_axis_weights ─────────────────────┼──┼──►                     │   │  │ │
+│   (128-bit)        [71:0] used        │  │  │  Pixel passthrough  │   │  │ │
+│                                       │  │  │  (when busy)        │   │  │ │
+│   s_axis_bias ────────────────────────┼──┼──►                     │   │  │ │
+│   (128-bit)                           │  │  │                     │   │  │ │
+│                                       │  │  │  Output forwarding  │   │  │ │
+│   s_axis_pixels ──────────────────────┼──┼──►  (data_out_valid)   │   │  │ │
+│   (64-bit)                            │  │  └──────────┬──────────┘   │  │ │
+│                                       │  │             │              │  │ │
+│   m_axis_output ◄─────────────────────┼──┼─────────────┘              │  │ │
+│   (64-bit)                            │  └─────────────────────────────┘  │ │
+│                                       └───────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## AXI-Lite Register Map
+
+The `TinyYOLOV3_HW_control_s_axi` module implements the standard Vitis `ap_ctrl_hs` protocol plus 11 configuration registers.
+
+### Control Register (0x00)
+
+| Bit | Name | Access | Description |
+|-----|------|--------|-------------|
+| 0 | `ap_start` | R/W | Start kernel execution (auto-clears on `ap_ready`) |
+| 1 | `ap_done` | R/COR | Kernel completed (clear on read) |
+| 2 | `ap_idle` | R | Kernel is idle |
+| 3 | `ap_ready` | R/COR | Kernel ready for next input |
+| 7 | `auto_restart` | R/W | Enable continuous mode |
+| 9 | `interrupt` | R | Interrupt status |
+
+### Configuration Registers
+
+| Address | Name | Width | Description |
+|---------|------|-------|-------------|
+| 0x10 | `cfg_ci_groups` | 32 | Input channel groups ($C_{in}/8$) |
+| 0x18 | `cfg_output_group` | 32 | Current output group index |
+| 0x20 | `cfg_wt_base_addr` | 32 | Weight base address in URAM |
+| 0x28 | `cfg_in_channels` | 32 | Total input channels |
+| 0x30 | `cfg_img_width` | 32 | Image width (padded for 3×3) |
+| 0x38 | `cfg_use_maxpool` | 32 | Enable 2×2 max pooling |
+| 0x40 | `cfg_stride_2` | 32 | MaxPool stride=2 mode |
+| 0x48 | `cfg_quant_m` | 32 | Quantization multiplier M |
+| 0x50 | `cfg_quant_n` | 32 | Quantization shift N |
+| 0x58 | `cfg_use_relu` | 32 | Enable ReLU activation |
+| 0x60 | `cfg_kernel_1x1` | 32 | 1×1 convolution mode |
+
+---
+
+## CPU Execution Flow
+
+The CPU controls all layer sequencing. The FPGA processes one output group at a time.
+
+### Integration FSM States
+
+The `axi_conv_integration` module manages the loading sequence:
+
+```
+ST_IDLE ──(wt_done && bias_done)──► ST_READY ──(ap_start)──► ST_GO ──► ST_RUNNING ──(conv_done)──► ST_DONE
+   │                                                                        ▲                         │
+   │                                                                        │                         │
+   └── Accept weight/bias streams                                    Accept pixels            Signal ap_done
+       (parallel FSMs)                                               Output results           (!ap_start)→IDLE
+```
+
+**Weight Loading FSM:**
+```
+WT_IDLE ──(tvalid)──► WT_FIRST ──► WT_LOAD ──(tlast)──► WT_DONE
+              │                                              │
+              └── Reset wt_wr_addr                           └── Block tready
+```
+
+**Bias Loading FSM:** (identical structure)
+
+### CPU Driver Sequence (Per Output Group)
+
+```c
+// ═══════════════════════════════════════════════════════════════════
+// Phase 0: Pre-layer setup (once per layer)
+// ═══════════════════════════════════════════════════════════════════
+
+// Load biases for all output groups (fits in single DMA transfer)
+dma_transfer(BIAS_CHANNEL, bias_buffer, bias_size);
+wait_dma_complete(BIAS_CHANNEL);
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 1: Per-chunk weight loading
+// ═══════════════════════════════════════════════════════════════════
+
+// Load weights for this chunk of output groups
+dma_transfer(WEIGHTS_CHANNEL, weight_buffer, weight_size);
+wait_dma_complete(WEIGHTS_CHANNEL);
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2: Per-output-group processing
+// ═══════════════════════════════════════════════════════════════════
+
+for (int og = chunk_start; og < chunk_end; og++) {
+
+    // Step 1: Configure registers
+    write_reg(CFG_CI_GROUPS,    ci_groups);
+    write_reg(CFG_OUTPUT_GROUP, og);
+    write_reg(CFG_WT_BASE_ADDR, (og - chunk_start) * ci_groups);
+    write_reg(CFG_IN_CHANNELS,  in_channels);
+    write_reg(CFG_IMG_WIDTH,    img_width);
+    write_reg(CFG_USE_MAXPOOL,  use_maxpool);
+    write_reg(CFG_STRIDE_2,     stride_2);
+    write_reg(CFG_QUANT_M,      quant_m);
+    write_reg(CFG_QUANT_N,      quant_n);
+    write_reg(CFG_USE_RELU,     use_relu);
+    write_reg(CFG_KERNEL_1X1,   kernel_1x1);
+
+    // Step 2: Start output DMA (prepare to receive)
+    dma_start_receive(OUTPUT_CHANNEL, output_buffer + og * output_size, output_size);
+
+    // Step 3: Trigger kernel
+    write_reg(AP_CTRL, 0x01);  // Set ap_start
+
+    // Step 4: Start pixel DMA (stream input)
+    dma_start_send(PIXELS_CHANNEL, input_buffer, input_size);
+
+    // Step 5: Wait for completion
+    while (!(read_reg(AP_CTRL) & 0x02));  // Poll ap_done
+    // Or use interrupt-driven wait
+
+    // Step 6: Wait for output DMA
+    wait_dma_complete(OUTPUT_CHANNEL);
+}
+```
+
+### Timing Diagram
+
+```
+                    Weight DMA    Bias DMA     ap_start    Pixel DMA    Output DMA
+                    ─────────     ────────     ────────    ─────────    ──────────
+Time ──────────────────────────────────────────────────────────────────────────────►
+
+Layer setup:        ╔════════╗    ╔═══════╗
+                    ║ stream ║    ║stream ║
+                    ╚════════╝    ╚═══════╝
+                              wt_done  bias_done
+                                   │      │
+                                   ▼      ▼
+Output group 0:                         ╔═╗   ╔═════════════╗   ╔═════════════╗
+                                        ║1║   ║ stream in   ║   ║ stream out  ║
+                                        ╚═╝   ╚═════════════╝   ╚═════════════╝
+                                         │                               │
+                                         │          conv_busy            │ ap_done
+                                         └───────────────────────────────┘
+
+Output group 1:                         ╔═╗   ╔═════════════╗   ╔═════════════╗
+                                        ║1║   ║ stream in   ║   ║ stream out  ║
+                                        ╚═╝   ╚═════════════╝   ╚═════════════╝
+                                         ...
+```
+
+### AXI-Stream TREADY Behavior
+
+| Stream | TREADY Condition | Notes |
+|--------|------------------|-------|
+| `s_axis_weights` | `wt_state != WT_DONE` | Accept until tlast received |
+| `s_axis_bias` | `bias_state != BIAS_DONE` | Accept until tlast received |
+| `s_axis_pixels` | `conv_busy` | Accept only during RUNNING state |
+| `m_axis_output` | Downstream DMA ready | No internal backpressure handling |
+
+### Important Notes
+
+1. **Weight Format:** The 128-bit AXI-Stream carries 72-bit weight words in the lower bits. Upper 56 bits are ignored.
+
+2. **Load Before Start:** Weights and biases must be fully loaded (DMAs complete) before asserting `ap_start`. The integration FSM enforces this by requiring both `wt_done` and `bias_done` to transition to `ST_READY`.
+
+3. **No Output Backpressure:** The conv pipeline does not stall if `m_axis_output_tready` goes low. Ensure the output DMA is started before `ap_start` and can sustain the output rate.
+
+4. **Pixel Streaming Rate:** Once `ap_start` is asserted and pixels begin streaming, they should flow continuously. The kernel window expects uninterrupted pixel delivery to maintain proper 3×3 window generation.
+
+5. **TLAST Signals:**
+   - `s_axis_weights_tlast`: Marks end of weight transfer
+   - `s_axis_bias_tlast`: Marks end of bias transfer
+   - `s_axis_pixels_tlast`: Marks last pixel of frame
+   - `m_axis_output_tlast`: Asserted with final output (on `conv_done`)
+
+---
+
+## Complete System Block Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              Kria KV260 Platform                                │
+│                                                                                 │
+│   ┌─────────────────────┐                      ┌──────────────────────────────┐ │
+│   │   ARM Cortex-A53    │                      │     Programmable Logic       │ │
+│   │                     │                      │                              │ │
+│   │  ┌───────────────┐  │     AXI-Lite         │  ┌────────────────────────┐  │ │
+│   │  │  CPU Driver   │──┼──────────────────────┼──│  TinyYOLOV3_HW kernel  │  │ │
+│   │  │               │  │  (cfg_*, ap_ctrl)    │  │                        │  │ │
+│   │  │  - Layer loop │  │                      │  │  ┌──────────────────┐  │  │ │
+│   │  │  - DMA setup  │  │                      │  │  │ control_s_axi    │  │  │ │
+│   │  │  - Config     │  │                      │  │  └──────────────────┘  │  │ │
+│   │  └───────────────┘  │                      │  │                        │  │ │
+│   │         │           │                      │  │  ┌──────────────────┐  │  │ │
+│   │         ▼           │                      │  │  │ conv_wrapper     │  │  │ │
+│   │  ┌───────────────┐  │                      │  │  │                  │  │  │ │
+│   │  │   DMA Engine  │  │     AXI-Stream       │  │  │  axi_conv_integ  │  │  │ │
+│   │  │               │──┼──────────────────────┼──│  │                  │  │  │ │
+│   │  │  - Weights    │  │  s_axis_weights      │  │  │  ┌────────────┐  │  │  │ │
+│   │  │  - Biases     │  │  s_axis_bias         │  │  │  │  conv_top  │  │  │  │ │
+│   │  │  - Pixels     │  │  s_axis_pixels       │  │  │  │            │  │  │  │ │
+│   │  │  - Output     │◄─┼──────────────────────┼──│  │  └────────────┘  │  │  │ │
+│   │  │               │  │  m_axis_output       │  │  └──────────────────┘  │  │ │
+│   │  └───────────────┘  │                      │  └────────────────────────┘  │ │
+│   │         │           │                      │                              │ │
+│   └─────────┼───────────┘                      └──────────────────────────────┘ │
+│             │                                                                   │
+│             ▼                                                                   │
+│   ┌─────────────────────────────────────────────────────────────────────────┐   │
+│   │                              DDR4 Memory                                │   │
+│   │                                                                         │   │
+│   │   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐               │   │
+│   │   │ Weights  │  │  Biases  │  │  Input   │  │  Output  │               │   │
+│   │   │ (layer)  │  │  (all)   │  │  Buffer  │  │  Buffer  │               │   │
+│   │   └──────────┘  └──────────┘  └──────────┘  └──────────┘               │   │
+│   └─────────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```

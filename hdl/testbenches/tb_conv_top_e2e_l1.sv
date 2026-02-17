@@ -35,6 +35,7 @@ module tb_conv_top_e2e_l1;
     logic [31:0]                   cfg_quant_m;
     logic [4:0]                    cfg_quant_n;
     logic                          cfg_use_relu;
+    logic                          cfg_kernel_1x1;
     logic                          go;
     logic                          busy, done;
 
@@ -52,38 +53,6 @@ module tb_conv_top_e2e_l1;
 
     logic [63:0]                   data_out;
     logic                          data_out_valid;
-
-    // Debug signals - use `ifndef POST_SYNTH for RTL sim, leave unconnected for post-synth
-`ifndef POST_SYNTH
-    logic [31:0]                   dbg_bias_out [0:7];
-    logic                          dbg_bias_valid;
-    logic [575:0]                  dbg_wt_data_out [0:7];
-    logic                          dbg_wt_data_ready;
-    logic                          dbg_conv_valid_in;
-    logic                          dbg_conv_last_channel;
-    logic [63:0]                   dbg_pixel_d2 [0:2][0:2];
-    logic [31:0]                   dbg_conv_outs [0:7];
-    logic                          dbg_conv_data_valid;
-    // Kernel window debug
-    logic [63:0]                   dbg_kw_row0;
-    logic [63:0]                   dbg_kw_row1;
-    logic [63:0]                   dbg_kw_row2;
-    logic [31:0]                   dbg_kw_delay_count;
-    logic [31:0]                   dbg_kw_total_delay;
-    logic                          dbg_kw_priming_done;
-    logic [31:0]                   dbg_kw_col_cnt;
-    logic                          dbg_kw_col_valid;
-    logic [7:0]                    dbg_kw_delay_depth;
-    logic [31:0]                   dbg_kw_vectors_per_row;
-    // Output streaming debug
-    logic [63:0]                   dbg_data_out;
-    logic                          dbg_data_out_valid;
-    logic [31:0]                   dbg_output_count;
-    logic [63:0]                   dbg_quant_packed;
-    logic                          dbg_quant_valid;
-    logic [63:0]                   dbg_maxpool_out;
-    logic                          dbg_maxpool_valid;
-`endif
 
     // ── DUT ──
     conv_top #(
@@ -104,6 +73,7 @@ module tb_conv_top_e2e_l1;
         .cfg_quant_m(cfg_quant_m),
         .cfg_quant_n(cfg_quant_n),
         .cfg_use_relu(cfg_use_relu),
+        .cfg_kernel_1x1(cfg_kernel_1x1),
         .go(go),
         .busy(busy),
         .done(done),
@@ -118,35 +88,6 @@ module tb_conv_top_e2e_l1;
         .pixel_in_last(pixel_in_last),
         .data_out(data_out),
         .data_out_valid(data_out_valid)
-`ifndef POST_SYNTH
-        ,
-        .dbg_bias_out(dbg_bias_out),
-        .dbg_bias_valid(dbg_bias_valid),
-        .dbg_wt_data_out(dbg_wt_data_out),
-        .dbg_wt_data_ready(dbg_wt_data_ready),
-        .dbg_conv_valid_in(dbg_conv_valid_in),
-        .dbg_conv_last_channel(dbg_conv_last_channel),
-        .dbg_pixel_d2(dbg_pixel_d2),
-        .dbg_conv_outs(dbg_conv_outs),
-        .dbg_conv_data_valid(dbg_conv_data_valid),
-        .dbg_kw_row0(dbg_kw_row0),
-        .dbg_kw_row1(dbg_kw_row1),
-        .dbg_kw_row2(dbg_kw_row2),
-        .dbg_kw_delay_count(dbg_kw_delay_count),
-        .dbg_kw_total_delay(dbg_kw_total_delay),
-        .dbg_kw_priming_done(dbg_kw_priming_done),
-        .dbg_kw_col_cnt(dbg_kw_col_cnt),
-        .dbg_kw_col_valid(dbg_kw_col_valid),
-        .dbg_kw_delay_depth(dbg_kw_delay_depth),
-        .dbg_kw_vectors_per_row(dbg_kw_vectors_per_row),
-        .dbg_data_out(dbg_data_out),
-        .dbg_data_out_valid(dbg_data_out_valid),
-        .dbg_output_count(dbg_output_count),
-        .dbg_quant_packed(dbg_quant_packed),
-        .dbg_quant_valid(dbg_quant_valid),
-        .dbg_maxpool_out(dbg_maxpool_out),
-        .dbg_maxpool_valid(dbg_maxpool_valid)
-`endif
     );
 
     // ── Clock ──
@@ -214,6 +155,7 @@ module tb_conv_top_e2e_l1;
         cfg_quant_m      = 0;
         cfg_quant_n      = 0;
         cfg_use_relu     = 0;
+        cfg_kernel_1x1   = 0;  // 3x3 mode
         bias_wr_en       = 0;
         bias_wr_data     = 0;
         bias_wr_addr_rst = 0;
@@ -346,85 +288,6 @@ module tb_conv_top_e2e_l1;
         end
     endtask
 
-// ════════════════════════════════════════════════════════════════
-// Debug monitors - only for RTL simulation (not post-synthesis)
-// ════════════════════════════════════════════════════════════════
-`ifndef POST_SYNTH
-    int dbg_conv_cnt = 0;
-    int dbg_pixel_cnt = 0;
-    int dbg_kw_valid_cnt = 0;
-
-    // Monitor kernel window priming
-    always @(negedge clk) begin
-        if (pixel_in_valid && dbg_pixel_cnt < 40) begin
-            if (dbg_pixel_cnt == 0) begin
-                $display("  KW CONFIG: delay_depth=%0d vectors_per_row=%0d total_delay=%0d",
-                    dbg_kw_delay_depth, dbg_kw_vectors_per_row, dbg_kw_total_delay);
-            end
-            if (dbg_pixel_cnt < 5 || (dbg_pixel_cnt >= 20 && dbg_pixel_cnt < 35)) begin
-                $display("  PIX[%0d]: in=%h row0=%h row1=%h row2=%h dcnt=%0d prime=%b col=%0d colv=%b",
-                    dbg_pixel_cnt, pixel_in, dbg_kw_row0, dbg_kw_row1, dbg_kw_row2,
-                    dbg_kw_delay_count, dbg_kw_priming_done, dbg_kw_col_cnt, dbg_kw_col_valid);
-            end
-            dbg_pixel_cnt++;
-        end
-    end
-
-    // Monitor kw_dout_valid
-    always @(negedge clk) begin
-        if (u_dut.kw_dout_valid && dbg_kw_valid_cnt < 10) begin
-            $display("  KW_VALID[%0d]: window[0]=%h,%h,%h  window[1]=%h,%h,%h  window[2]=%h,%h,%h",
-                dbg_kw_valid_cnt,
-                u_dut.kw_window[0][0], u_dut.kw_window[0][1], u_dut.kw_window[0][2],
-                u_dut.kw_window[1][0], u_dut.kw_window[1][1], u_dut.kw_window[1][2],
-                u_dut.kw_window[2][0], u_dut.kw_window[2][1], u_dut.kw_window[2][2]);
-            dbg_kw_valid_cnt++;
-        end
-    end
-
-    always @(negedge clk) begin
-        if (dbg_conv_data_valid && dbg_conv_cnt < 4) begin
-            $display("  DBG CONV[%0d]: %0d %0d %0d %0d %0d %0d %0d %0d",
-                dbg_conv_cnt,
-                $signed(dbg_conv_outs[0]), $signed(dbg_conv_outs[1]),
-                $signed(dbg_conv_outs[2]), $signed(dbg_conv_outs[3]),
-                $signed(dbg_conv_outs[4]), $signed(dbg_conv_outs[5]),
-                $signed(dbg_conv_outs[6]), $signed(dbg_conv_outs[7]));
-            dbg_conv_cnt++;
-        end
-        if (dbg_conv_valid_in && dbg_conv_cnt == 0) begin
-            $display("  DBG PIXEL_D2 at first conv_valid_in:");
-            for (int r = 0; r < 3; r++)
-                $display("    row%0d: %h %h %h", r,
-                    dbg_pixel_d2[r][0], dbg_pixel_d2[r][1], dbg_pixel_d2[r][2]);
-        end
-    end
-
-    int dbg_mp_qcnt = 0;
-    int dbg_mp_outcnt = 0;
-    always @(negedge clk) begin
-        if (u_dut.quant_valid && dbg_mp_qcnt < 20) begin
-            $display("  DBG MP_IN[%0d] col=%0d row=%0d: %h  h_max_latched=%h",
-                dbg_mp_qcnt,
-                u_dut.u_maxpool.col_cnt,
-                u_dut.u_maxpool.row_cnt,
-                u_dut.quant_packed,
-                u_dut.u_maxpool.h_max_latched);
-            dbg_mp_qcnt++;
-        end
-        if (u_dut.maxpool_valid_out && dbg_mp_outcnt < 20) begin
-            $display("  DBG MP_OUT[%0d]: data=%h  h_for_v=%h  prev_row=%h  lb_en_q=%b row_at=%0d",
-                dbg_mp_outcnt,
-                u_dut.maxpool_data_out,
-                u_dut.u_maxpool.h_max_for_vmax,
-                u_dut.u_maxpool.prev_row,
-                u_dut.u_maxpool.lb_en_q,
-                u_dut.u_maxpool.row_at_lben);
-            dbg_mp_outcnt++;
-        end
-    end
-`endif // POST_SYNTH
-
     initial begin
         $dumpfile("tb_conv_top_e2e_l1.vcd");
         $dumpvars(0, tb_conv_top_e2e_l1);
@@ -446,13 +309,6 @@ module tb_conv_top_e2e_l1;
 
         // Process all 4 output groups
         for (int og = 0; og < CO_GROUPS; og++) begin
-`ifndef POST_SYNTH
-            dbg_conv_cnt = 0;
-            dbg_mp_qcnt = 0;
-            dbg_mp_outcnt = 0;
-            dbg_pixel_cnt = 0;
-            dbg_kw_valid_cnt = 0;
-`endif
             run_output_group(og);
 
             // Flush between output groups

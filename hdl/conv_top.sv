@@ -4,7 +4,7 @@ module conv_top #(
     parameter BIAS_DEPTH      = 256,
     parameter BIAS_GROUP_BITS = $clog2(BIAS_DEPTH) - 1,
     parameter WT_LATENCY      = 3,
-    parameter CONV_PE_PIPE    = 3
+    parameter CONV_PE_PIPE    = 4  // 4 stages: multiply → partial_sum → spatial_sum/cycle_sum → acc
 )(
     input  logic        clk,
     input  logic        rst,
@@ -20,6 +20,7 @@ module conv_top #(
     input  logic [31:0]                   cfg_quant_m,
     input  logic [4:0]                    cfg_quant_n,
     input  logic                          cfg_use_relu,
+    input  logic                          cfg_kernel_1x1,   // 0=3x3, 1=1x1
     input  logic                          go,
     output logic                          busy,
     output logic                          done,
@@ -69,36 +70,85 @@ logic                        conv_last_channel;
 // ════════════════════════════════════════════════════════════════
 //  Internal wires: conv_3x3 outputs
 // ════════════════════════════════════════════════════════════════
+logic [31:0]                 conv_3x3_outs [0:7];
+logic                        conv_3x3_data_valid;
+
+// ════════════════════════════════════════════════════════════════
+//  Conv outputs (conv_3x3 handles both 3x3 and 1x1 modes)
+// ════════════════════════════════════════════════════════════════
 logic [31:0]                 conv_outs [0:7];
 logic                        conv_data_valid;
 
+assign conv_outs      = conv_3x3_outs;
+assign conv_data_valid = conv_3x3_data_valid;
+
 // ════════════════════════════════════════════════════════════════
-//  Internal wires: kernel window → pixel delay
+//  Internal wires: kernel window → pixel delay (3x3 path)
 // ════════════════════════════════════════════════════════════════
 logic [63:0]                 kw_window [0:2][0:2];
 logic                        kw_dout_valid;
 
-// last_pixel: pixel_in_last delayed through kernel window priming.
-// After priming, dout_valid = data_valid, so pixel_in_last on the
-// final beat coincides with kw_dout_valid.
+// ════════════════════════════════════════════════════════════════
+//  Pixel valid / last_pixel mux based on kernel type
+//  - 3x3: uses kernel_window output (with priming delay)
+//  - 1x1: uses pixel_in directly (no window needed)
+// ════════════════════════════════════════════════════════════════
+logic                        pixel_valid_mux;
 logic                        last_pixel;
-assign last_pixel = pixel_in_last & kw_dout_valid;
+
+assign pixel_valid_mux = cfg_kernel_1x1 ? pixel_in_valid : kw_dout_valid;
+assign last_pixel      = cfg_kernel_1x1 ? pixel_in_last  : (pixel_in_last & kw_dout_valid);
 
 // ════════════════════════════════════════════════════════════════
-//  Pixel delay: 3-stage shift register (matches WT_LATENCY).
+//  Pixel delay for 3x3: 3-stage shift register (matches WT_LATENCY).
 //  Valid delay is 4 cycles (1 NBA + 3 shift), pixel delay is 3
 //  cycles, so pixel_d2 settles 1 cycle before conv_valid_in.
 //  conv_pe synchronously samples the "old" pixel_d2 at the posedge
 //  where conv_valid_in fires, giving the correct aligned window.
 // ════════════════════════════════════════════════════════════════
-logic [63:0] pixel_d0 [0:2][0:2];
-logic [63:0] pixel_d1 [0:2][0:2];
-logic [63:0] pixel_d2 [0:2][0:2];
+logic [63:0] pixel_3x3_d0 [0:2][0:2];
+logic [63:0] pixel_3x3_d1 [0:2][0:2];
+logic [63:0] pixel_3x3_d2 [0:2][0:2];
 
 always_ff @(posedge clk) begin
-    pixel_d0 <= kw_window;
-    pixel_d1 <= pixel_d0;
-    pixel_d2 <= pixel_d1;
+    pixel_3x3_d0 <= kw_window;
+    pixel_3x3_d1 <= pixel_3x3_d0;
+    pixel_3x3_d2 <= pixel_3x3_d1;
+end
+
+// ════════════════════════════════════════════════════════════════
+//  Pixel delay for 1x1: 4-stage shift register.
+//  The controller adds 1 extra cycle (valid_raw NBA) before the
+//  WT_LATENCY shift, so total valid delay = 1 + WT_LATENCY = 4.
+//  Pixel delay must match: 4 stages.
+// ════════════════════════════════════════════════════════════════
+logic [63:0] pixel_1x1_d0, pixel_1x1_d1, pixel_1x1_d2, pixel_1x1_d3;
+
+always_ff @(posedge clk) begin
+    pixel_1x1_d0 <= pixel_in;
+    pixel_1x1_d1 <= pixel_1x1_d0;
+    pixel_1x1_d2 <= pixel_1x1_d1;
+    pixel_1x1_d3 <= pixel_1x1_d2;
+end
+
+// ════════════════════════════════════════════════════════════════
+//  Pixel mux for 1x1 mode: feed pixel to center [1][1], zeros elsewhere
+//  For 3x3 mode: use the full kernel window from pixel_3x3_d2
+// ════════════════════════════════════════════════════════════════
+logic [63:0] pixel_mux [0:2][0:2];
+
+always_comb begin
+    if (cfg_kernel_1x1) begin
+        // 1x1 mode: only center pixel, all others zero
+        for (int r = 0; r < 3; r++) begin
+            for (int c = 0; c < 3; c++) begin
+                pixel_mux[r][c] = (r == 1 && c == 1) ? pixel_1x1_d3 : 64'b0;
+            end
+        end
+    end else begin
+        // 3x3 mode: use full kernel window
+        pixel_mux = pixel_3x3_d2;
+    end
 end
 
 // ════════════════════════════════════════════════════════════════
@@ -162,7 +212,7 @@ conv_controller #(
     .wt_rd_en         (wt_rd_en),
     .wt_rd_addr       (wt_rd_addr),
     .wt_data_ready    (wt_data_ready),
-    .pixel_valid      (kw_dout_valid),
+    .pixel_valid      (pixel_valid_mux),
     .last_pixel       (last_pixel),
     .conv_valid_in    (conv_valid_in),
     .conv_last_channel(conv_last_channel)
@@ -187,17 +237,19 @@ kernelWindow u_kernel_window (
 
 // ════════════════════════════════════════════════════════════════
 //  Conv 3x3: 8 parallel PEs computing 8 output channels
+//  For 1x1 mode: pixel_mux feeds center position only, weights have
+//  non-zero values only at spatial position 4 (center)
 // ════════════════════════════════════════════════════════════════
 conv_3x3 u_conv_3x3 (
     .clk          (clk),
     .rst          (rst),
     .valid_in     (conv_valid_in),
     .last_channel (conv_last_channel),
-    .pixels       (pixel_d2),
+    .pixels       (pixel_mux),
     .weights      (wt_data_out),
     .biases       (bias_out),
-    .outs         (conv_outs),
-    .data_valid   (conv_data_valid)
+    .outs         (conv_3x3_outs),
+    .data_valid   (conv_3x3_data_valid)
 );
 
 // ════════════════════════════════════════════════════════════════
@@ -233,18 +285,34 @@ end
 
 // ════════════════════════════════════════════════════════════════
 //  MaxPool: operates on quantized 8-bit packed output
-//  img_width = cfg_img_width - 2 (conv output spatial width)
+//  img_width for 3x3 = cfg_img_width - 2 (conv output spatial width)
+//  img_width for 1x1 = cfg_img_width (no spatial reduction)
 //  channels  = 8 (always 8 output channels per conv_top call)
 // ════════════════════════════════════════════════════════════════
 logic [63:0] maxpool_data_out;
 logic        maxpool_valid_out;
 
+// Register config-derived signals to break timing paths
+// These are stable before processing starts
+(* max_fanout = 32 *) logic [15:0] maxpool_img_width_r;
+(* max_fanout = 32 *) logic        maxpool_stride_2_r;
+
+always_ff @(posedge clk) begin
+    if (rst) begin
+        maxpool_img_width_r <= '0;
+        maxpool_stride_2_r  <= '0;
+    end else begin
+        maxpool_img_width_r <= cfg_kernel_1x1 ? cfg_img_width : (cfg_img_width - 16'd2);
+        maxpool_stride_2_r  <= cfg_stride_2;
+    end
+end
+
 maxPool u_maxpool (
     .clk       (clk),
     .rst       (rst),
-    .img_width (cfg_img_width - 16'd2),
+    .img_width (maxpool_img_width_r),
     .channels  (16'd8),
-    .stride_2  (cfg_stride_2),
+    .stride_2  (maxpool_stride_2_r),
     .data_in   (quant_packed),
     .valid_in  (quant_valid),
     .data_out  (maxpool_data_out),
@@ -253,8 +321,18 @@ maxPool u_maxpool (
 
 // ════════════════════════════════════════════════════════════════
 //  Output mux: maxpool or direct quantizer bypass
+//  Use registered config to break timing path
 // ════════════════════════════════════════════════════════════════
-assign data_out       = cfg_use_maxpool ? maxpool_data_out  : quant_packed;
-assign data_out_valid = cfg_use_maxpool ? maxpool_valid_out : quant_valid;
+(* max_fanout = 32 *) logic cfg_use_maxpool_r;
+
+always_ff @(posedge clk) begin
+    if (rst)
+        cfg_use_maxpool_r <= '0;
+    else
+        cfg_use_maxpool_r <= cfg_use_maxpool;
+end
+
+assign data_out       = cfg_use_maxpool_r ? maxpool_data_out  : quant_packed;
+assign data_out_valid = cfg_use_maxpool_r ? maxpool_valid_out : quant_valid;
 
 endmodule

@@ -31,6 +31,7 @@ module tb_conv_top_post_synth;
     logic [31:0]                   cfg_quant_m;
     logic [4:0]                    cfg_quant_n;
     logic                          cfg_use_relu;
+    logic                          cfg_kernel_1x1;
     logic                          go;
     logic                          busy, done;
 
@@ -63,6 +64,7 @@ module tb_conv_top_post_synth;
         .cfg_quant_m(cfg_quant_m),
         .cfg_quant_n(cfg_quant_n),
         .cfg_use_relu(cfg_use_relu),
+        .cfg_kernel_1x1(cfg_kernel_1x1),
         .go(go),
         .busy(busy),
         .done(done),
@@ -134,6 +136,7 @@ module tb_conv_top_post_synth;
         cfg_quant_m      = 0;
         cfg_quant_n      = 0;
         cfg_use_relu     = 0;
+        cfg_kernel_1x1   = 0;  // 3x3 mode
         bias_wr_en       = 0;
         bias_wr_data     = 0;
         bias_wr_addr_rst = 0;

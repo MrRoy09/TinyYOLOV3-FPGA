@@ -2,10 +2,10 @@ module conv_controller #(
     parameter WT_ADDR_WIDTH   = 12,
     parameter BIAS_ADDR_WIDTH = 7,
     parameter WT_LATENCY      = 3,
-    parameter CONV_PE_PIPE    = 3,
+    parameter CONV_PE_PIPE    = 4,  // 4 stages after timing fix
     parameter QUANT_LATENCY   = 4,
     parameter MAXPOOL_LATENCY = 4,
-    parameter PIPE_DEPTH      = WT_LATENCY + CONV_PE_PIPE + 1 + QUANT_LATENCY + MAXPOOL_LATENCY
+    parameter PIPE_DEPTH      = WT_LATENCY + CONV_PE_PIPE + 1 + QUANT_LATENCY + MAXPOOL_LATENCY  // = 16
 )(
     input  logic        clk,
     input  logic        rst,
@@ -47,7 +47,7 @@ typedef enum logic [2:0] {
 
 state_t state;
 logic [9:0] ci_cnt;
-logic [3:0] drain_cnt;
+logic [4:0] drain_cnt;  // 5 bits to hold PIPE_DEPTH (up to 31)
 
 // raw control signals generated in CONV state
 logic valid_raw;
@@ -131,7 +131,7 @@ always_ff @(posedge clk) begin
 
             DRAIN: begin
                 drain_cnt <= drain_cnt + 1;
-                if (drain_cnt == PIPE_DEPTH[3:0] - 4'd1) begin
+                if (drain_cnt == PIPE_DEPTH[4:0] - 5'd1) begin
                     busy  <= 0;
                     done  <= 1;
                     state <= IDLE;

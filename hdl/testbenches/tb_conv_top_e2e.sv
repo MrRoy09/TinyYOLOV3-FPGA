@@ -33,6 +33,7 @@ module tb_conv_top_e2e;
     logic [31:0]                   cfg_quant_m;
     logic [4:0]                    cfg_quant_n;
     logic                          cfg_use_relu;
+    logic                          cfg_kernel_1x1;
     logic                          go;
     logic                          busy, done;
 
@@ -50,38 +51,6 @@ module tb_conv_top_e2e;
 
     logic [63:0]                   data_out;
     logic                          data_out_valid;
-
-    // Debug signals - use `ifndef POST_SYNTH for RTL sim, leave unconnected for post-synth
-`ifndef POST_SYNTH
-    logic [31:0]                   dbg_bias_out [0:7];
-    logic                          dbg_bias_valid;
-    logic [575:0]                  dbg_wt_data_out [0:7];
-    logic                          dbg_wt_data_ready;
-    logic                          dbg_conv_valid_in;
-    logic                          dbg_conv_last_channel;
-    logic [63:0]                   dbg_pixel_d2 [0:2][0:2];
-    logic [31:0]                   dbg_conv_outs [0:7];
-    logic                          dbg_conv_data_valid;
-    // Kernel window debug
-    logic [63:0]                   dbg_kw_row0;
-    logic [63:0]                   dbg_kw_row1;
-    logic [63:0]                   dbg_kw_row2;
-    logic [31:0]                   dbg_kw_delay_count;
-    logic [31:0]                   dbg_kw_total_delay;
-    logic                          dbg_kw_priming_done;
-    logic [31:0]                   dbg_kw_col_cnt;
-    logic                          dbg_kw_col_valid;
-    logic [7:0]                    dbg_kw_delay_depth;
-    logic [31:0]                   dbg_kw_vectors_per_row;
-    // Output streaming debug
-    logic [63:0]                   dbg_data_out;
-    logic                          dbg_data_out_valid;
-    logic [31:0]                   dbg_output_count;
-    logic [63:0]                   dbg_quant_packed;
-    logic                          dbg_quant_valid;
-    logic [63:0]                   dbg_maxpool_out;
-    logic                          dbg_maxpool_valid;
-`endif
 
     // ── DUT ──
     conv_top #(
@@ -102,6 +71,7 @@ module tb_conv_top_e2e;
         .cfg_quant_m(cfg_quant_m),
         .cfg_quant_n(cfg_quant_n),
         .cfg_use_relu(cfg_use_relu),
+        .cfg_kernel_1x1(cfg_kernel_1x1),
         .go(go),
         .busy(busy),
         .done(done),
@@ -116,35 +86,6 @@ module tb_conv_top_e2e;
         .pixel_in_last(pixel_in_last),
         .data_out(data_out),
         .data_out_valid(data_out_valid)
-`ifndef POST_SYNTH
-        ,
-        .dbg_bias_out(dbg_bias_out),
-        .dbg_bias_valid(dbg_bias_valid),
-        .dbg_wt_data_out(dbg_wt_data_out),
-        .dbg_wt_data_ready(dbg_wt_data_ready),
-        .dbg_conv_valid_in(dbg_conv_valid_in),
-        .dbg_conv_last_channel(dbg_conv_last_channel),
-        .dbg_pixel_d2(dbg_pixel_d2),
-        .dbg_conv_outs(dbg_conv_outs),
-        .dbg_conv_data_valid(dbg_conv_data_valid),
-        .dbg_kw_row0(dbg_kw_row0),
-        .dbg_kw_row1(dbg_kw_row1),
-        .dbg_kw_row2(dbg_kw_row2),
-        .dbg_kw_delay_count(dbg_kw_delay_count),
-        .dbg_kw_total_delay(dbg_kw_total_delay),
-        .dbg_kw_priming_done(dbg_kw_priming_done),
-        .dbg_kw_col_cnt(dbg_kw_col_cnt),
-        .dbg_kw_col_valid(dbg_kw_col_valid),
-        .dbg_kw_delay_depth(dbg_kw_delay_depth),
-        .dbg_kw_vectors_per_row(dbg_kw_vectors_per_row),
-        .dbg_data_out(dbg_data_out),
-        .dbg_data_out_valid(dbg_data_out_valid),
-        .dbg_output_count(dbg_output_count),
-        .dbg_quant_packed(dbg_quant_packed),
-        .dbg_quant_valid(dbg_quant_valid),
-        .dbg_maxpool_out(dbg_maxpool_out),
-        .dbg_maxpool_valid(dbg_maxpool_valid)
-`endif
     );
 
     // ── Clock ──
@@ -208,6 +149,7 @@ module tb_conv_top_e2e;
         cfg_quant_m      = 0;
         cfg_quant_n      = 0;
         cfg_use_relu     = 0;
+        cfg_kernel_1x1   = 0;  // 3x3 mode
         bias_wr_en       = 0;
         bias_wr_data     = 0;
         bias_wr_addr_rst = 0;
@@ -340,155 +282,6 @@ module tb_conv_top_e2e;
         end
     endtask
 
-// ════════════════════════════════════════════════════════════════
-// Debug monitors - only for RTL simulation (not post-synthesis)
-// ════════════════════════════════════════════════════════════════
-`ifndef POST_SYNTH
-    // ── Capture pixel_d2 at posedge when conv_valid_in fires ──
-    logic [63:0] first_pixel_d2 [0:2][0:2];
-    logic [63:0] row1_pixel_d2 [0:2][0:2];  // For position [1,0]
-    int capture_conv_cnt = 0;
-    always @(posedge clk) begin
-        if (rst) begin
-            capture_conv_cnt <= 0;
-        end else if (dbg_conv_valid_in) begin
-            if (capture_conv_cnt == 0) begin
-                for (int r = 0; r < 3; r++)
-                    for (int c = 0; c < 3; c++)
-                        first_pixel_d2[r][c] <= dbg_pixel_d2[r][c];
-            end
-            if (capture_conv_cnt == 8) begin  // Position [1,0]
-                for (int r = 0; r < 3; r++)
-                    for (int c = 0; c < 3; c++)
-                        row1_pixel_d2[r][c] <= dbg_pixel_d2[r][c];
-                $display("  >>> CAPTURED PIXEL_D2 for conv[1,0] at posedge:");
-                for (int r = 0; r < 3; r++)
-                    $display("      row%0d: %h %h %h", r,
-                        dbg_pixel_d2[r][0], dbg_pixel_d2[r][1], dbg_pixel_d2[r][2]);
-            end
-            capture_conv_cnt <= capture_conv_cnt + 1;
-        end
-    end
-
-    // ── Debug monitor: dump conv outputs and pixel_d2 ──
-    int dbg_conv_cnt = 0;
-    int dbg_conv_out_cnt = 0;  // counter for conv outputs (row-major position)
-    always @(negedge clk) begin
-        if (dbg_conv_data_valid) begin
-            int out_row, out_col;
-            out_row = dbg_conv_out_cnt / 8;
-            out_col = dbg_conv_out_cnt % 8;
-
-            // Print first few and row 1 outputs
-            if (dbg_conv_out_cnt < 4 || (out_row == 1 && out_col < 4)) begin
-                $display("  DBG CONV[r=%0d,c=%0d]: %0d %0d %0d %0d %0d %0d %0d %0d",
-                    out_row, out_col,
-                    $signed(dbg_conv_outs[0]), $signed(dbg_conv_outs[1]),
-                    $signed(dbg_conv_outs[2]), $signed(dbg_conv_outs[3]),
-                    $signed(dbg_conv_outs[4]), $signed(dbg_conv_outs[5]),
-                    $signed(dbg_conv_outs[6]), $signed(dbg_conv_outs[7]));
-            end
-            dbg_conv_out_cnt++;
-        end
-
-        // Dump pixel_d2 at specific conv_valid_in cycles
-        if (dbg_conv_valid_in) begin
-            // Print window for first output and first output of row 1
-            if (dbg_conv_cnt == 0 || dbg_conv_cnt == 8) begin
-                $display("  DBG PIXEL_D2 at conv_valid_in[%0d]:", dbg_conv_cnt);
-                for (int r = 0; r < 3; r++)
-                    $display("    row%0d: %h %h %h", r,
-                        dbg_pixel_d2[r][0], dbg_pixel_d2[r][1], dbg_pixel_d2[r][2]);
-                if (dbg_conv_cnt == 0) begin
-                    // Dump first weight vector (filter 0) - 576 bits = 9 spatial × 8 channels
-                    $display("  DBG WT_DATA_OUT[0] at first conv_valid_in:");
-                    for (int pos = 0; pos < 9; pos++) begin
-                        $display("    pos%0d: ch0=%h ch1=%h ch2=%h ch3=%h ch4=%h ch5=%h ch6=%h ch7=%h",
-                            pos,
-                            dbg_wt_data_out[0][(pos*64 + 0*8) +: 8],
-                            dbg_wt_data_out[0][(pos*64 + 1*8) +: 8],
-                            dbg_wt_data_out[0][(pos*64 + 2*8) +: 8],
-                            dbg_wt_data_out[0][(pos*64 + 3*8) +: 8],
-                            dbg_wt_data_out[0][(pos*64 + 4*8) +: 8],
-                            dbg_wt_data_out[0][(pos*64 + 5*8) +: 8],
-                            dbg_wt_data_out[0][(pos*64 + 6*8) +: 8],
-                            dbg_wt_data_out[0][(pos*64 + 7*8) +: 8]);
-                    end
-                    $display("  DBG BIAS_OUT at first conv_valid_in: %0d %0d %0d %0d %0d %0d %0d %0d",
-                        $signed(dbg_bias_out[0]), $signed(dbg_bias_out[1]),
-                        $signed(dbg_bias_out[2]), $signed(dbg_bias_out[3]),
-                        $signed(dbg_bias_out[4]), $signed(dbg_bias_out[5]),
-                        $signed(dbg_bias_out[6]), $signed(dbg_bias_out[7]));
-                end
-            end
-            dbg_conv_cnt++;
-        end
-    end
-
-    // ── Quantizer debug: print each quantizer's input on first conv_data_valid ──
-    int dbg_quant_in_cnt = 0;
-    always @(negedge clk) begin
-        if (dbg_conv_data_valid && dbg_quant_in_cnt < 4) begin
-            $display("  DBG QUANT_IN[%0d]: ch0=%0d ch1=%0d ch2=%0d ch3=%0d ch4=%0d ch5=%0d ch6=%0d ch7=%0d",
-                dbg_quant_in_cnt,
-                $signed(u_dut.gen_quant[0].u_quant.data_in),
-                $signed(u_dut.gen_quant[1].u_quant.data_in),
-                $signed(u_dut.gen_quant[2].u_quant.data_in),
-                $signed(u_dut.gen_quant[3].u_quant.data_in),
-                $signed(u_dut.gen_quant[4].u_quant.data_in),
-                $signed(u_dut.gen_quant[5].u_quant.data_in),
-                $signed(u_dut.gen_quant[6].u_quant.data_in),
-                $signed(u_dut.gen_quant[7].u_quant.data_in));
-            dbg_quant_in_cnt++;
-        end
-    end
-
-    // ── Quantizer debug: print mult_result and valid_pipe on first quant_valid ──
-    int dbg_quant_out_cnt = 0;
-    always @(negedge clk) begin
-        if (u_dut.quant_valid && dbg_quant_out_cnt < 4) begin
-            $display("  DBG QUANT_OUT[%0d]: ch0=%0d ch1=%0d ch2=%0d ch3=%0d ch4=%0d ch5=%0d ch6=%0d ch7=%0d",
-                dbg_quant_out_cnt,
-                $signed(u_dut.gen_quant[0].u_quant.data_out),
-                $signed(u_dut.gen_quant[1].u_quant.data_out),
-                $signed(u_dut.gen_quant[2].u_quant.data_out),
-                $signed(u_dut.gen_quant[3].u_quant.data_out),
-                $signed(u_dut.gen_quant[4].u_quant.data_out),
-                $signed(u_dut.gen_quant[5].u_quant.data_out),
-                $signed(u_dut.gen_quant[6].u_quant.data_out),
-                $signed(u_dut.gen_quant[7].u_quant.data_out));
-            dbg_quant_out_cnt++;
-        end
-    end
-
-    // ── Maxpool debug: dump quant input and maxpool internal state ──
-    int dbg_mp_qcnt = 0;
-    int dbg_mp_outcnt = 0;
-    always @(negedge clk) begin
-        // Dump first 20 quant_valid pulses (maxpool input)
-        if (u_dut.quant_valid && dbg_mp_qcnt < 20) begin
-            $display("  DBG MP_IN[%0d] col=%0d row=%0d: %h  h_max_latched=%h",
-                dbg_mp_qcnt,
-                u_dut.u_maxpool.col_cnt,
-                u_dut.u_maxpool.row_cnt,
-                u_dut.quant_packed,
-                u_dut.u_maxpool.h_max_latched);
-            dbg_mp_qcnt++;
-        end
-        // Dump maxpool outputs with internal state
-        if (u_dut.maxpool_valid_out && dbg_mp_outcnt < 20) begin
-            $display("  DBG MP_OUT[%0d]: data=%h  h_for_v=%h  prev_row=%h  lb_en_q=%b row_at=%0d",
-                dbg_mp_outcnt,
-                u_dut.maxpool_data_out,
-                u_dut.u_maxpool.h_max_for_vmax,
-                u_dut.u_maxpool.prev_row,
-                u_dut.u_maxpool.lb_en_q,
-                u_dut.u_maxpool.row_at_lben);
-            dbg_mp_outcnt++;
-        end
-    end
-`endif // POST_SYNTH
-
     initial begin
         $dumpfile("tb_conv_top_e2e.vcd");
         $dumpvars(0, tb_conv_top_e2e);
@@ -509,15 +302,6 @@ module tb_conv_top_e2e;
         load_all_biases();
 
         // Process output group 0
-`ifndef POST_SYNTH
-        dbg_conv_cnt = 0;
-        dbg_conv_out_cnt = 0;
-        capture_conv_cnt = 0;
-        dbg_mp_qcnt = 0;
-        dbg_mp_outcnt = 0;
-        dbg_quant_in_cnt = 0;
-        dbg_quant_out_cnt = 0;
-`endif
         run_output_group(0);
 
         // Flush between output groups (reset kernel window / delay line state)
@@ -526,15 +310,6 @@ module tb_conv_top_e2e;
         flush_pipeline();
 
         // Process output group 1
-`ifndef POST_SYNTH
-        dbg_conv_cnt = 0;
-        dbg_conv_out_cnt = 0;
-        capture_conv_cnt = 0;
-        dbg_mp_qcnt = 0;
-        dbg_mp_outcnt = 0;
-        dbg_quant_in_cnt = 0;
-        dbg_quant_out_cnt = 0;
-`endif
         run_output_group(1);
 
         #200;
