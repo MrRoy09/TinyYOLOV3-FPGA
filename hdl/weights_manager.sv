@@ -17,8 +17,6 @@ module weight_manager #(
     output logic                   data_ready
 );
 
-// ── Write: auto-incrementing counter, bit-slice routing ──
-
 logic [ADDR_WIDTH+5:0] wr_cnt;
 
 wire [2:0]              uram_sel = wr_cnt[2:0];

@@ -9,7 +9,6 @@ module conv_top #(
     input  logic        clk,
     input  logic        rst,
 
-    // ── CPU configuration ──
     input  logic [9:0]                    cfg_ci_groups,
     input  logic [BIAS_GROUP_BITS-1:0]    cfg_output_group,
     input  logic [WT_ADDR_WIDTH-1:0]      cfg_wt_base_addr,
@@ -25,87 +24,53 @@ module conv_top #(
     output logic                          busy,
     output logic                          done,
 
-    // ── Bias write port (CPU DMA) ──
     input  logic                          bias_wr_en,
     input  logic [127:0]                  bias_wr_data,
     input  logic                          bias_wr_addr_rst,
 
-    // ── Weight write port (CPU DMA) ──
     input  logic                          wt_wr_en,
     input  logic [71:0]                   wt_wr_data,
     input  logic                          wt_wr_addr_rst,
 
-    // ── Pixel input (Input DMA) ──
     input  logic [63:0]                   pixel_in,
     input  logic                          pixel_in_valid,
     input  logic                          pixel_in_last,
 
-    // ── Output (Output DMA) ──
     output logic [63:0]                   data_out,
     output logic                          data_out_valid
 );
 
-// ════════════════════════════════════════════════════════════════
-//  Internal wires: controller ↔ bias_store
-// ════════════════════════════════════════════════════════════════
 logic                        bias_rd_en;
 logic [BIAS_GROUP_BITS-1:0]  bias_rd_group;
 logic                        bias_valid;
 logic [31:0]                 bias_out [0:7];
 
-// ════════════════════════════════════════════════════════════════
-//  Internal wires: controller ↔ weight_manager
-// ════════════════════════════════════════════════════════════════
 logic                        wt_rd_en;
 logic [WT_ADDR_WIDTH-1:0]    wt_rd_addr;
 logic                        wt_data_ready;
 logic [575:0]                wt_data_out [0:7];
 
-// ════════════════════════════════════════════════════════════════
-//  Internal wires: controller → conv datapath
-// ════════════════════════════════════════════════════════════════
 logic                        conv_valid_in;
 logic                        conv_last_channel;
 
-// ════════════════════════════════════════════════════════════════
-//  Internal wires: conv_3x3 outputs
-// ════════════════════════════════════════════════════════════════
 logic [31:0]                 conv_3x3_outs [0:7];
 logic                        conv_3x3_data_valid;
 
-// ════════════════════════════════════════════════════════════════
-//  Conv outputs (conv_3x3 handles both 3x3 and 1x1 modes)
-// ════════════════════════════════════════════════════════════════
 logic [31:0]                 conv_outs [0:7];
 logic                        conv_data_valid;
 
 assign conv_outs      = conv_3x3_outs;
 assign conv_data_valid = conv_3x3_data_valid;
 
-// ════════════════════════════════════════════════════════════════
-//  Internal wires: kernel window → pixel delay (3x3 path)
-// ════════════════════════════════════════════════════════════════
 logic [63:0]                 kw_window [0:2][0:2];
 logic                        kw_dout_valid;
 
-// ════════════════════════════════════════════════════════════════
-//  Pixel valid / last_pixel mux based on kernel type
-//  - 3x3: uses kernel_window output (with priming delay)
-//  - 1x1: uses pixel_in directly (no window needed)
-// ════════════════════════════════════════════════════════════════
 logic                        pixel_valid_mux;
 logic                        last_pixel;
 
 assign pixel_valid_mux = cfg_kernel_1x1 ? pixel_in_valid : kw_dout_valid;
 assign last_pixel      = cfg_kernel_1x1 ? pixel_in_last  : (pixel_in_last & kw_dout_valid);
 
-// ════════════════════════════════════════════════════════════════
-//  Pixel delay for 3x3: 3-stage shift register (matches WT_LATENCY).
-//  Valid delay is 4 cycles (1 NBA + 3 shift), pixel delay is 3
-//  cycles, so pixel_d2 settles 1 cycle before conv_valid_in.
-//  conv_pe synchronously samples the "old" pixel_d2 at the posedge
-//  where conv_valid_in fires, giving the correct aligned window.
-// ════════════════════════════════════════════════════════════════
 logic [63:0] pixel_3x3_d0 [0:2][0:2];
 logic [63:0] pixel_3x3_d1 [0:2][0:2];
 logic [63:0] pixel_3x3_d2 [0:2][0:2];
@@ -116,12 +81,6 @@ always_ff @(posedge clk) begin
     pixel_3x3_d2 <= pixel_3x3_d1;
 end
 
-// ════════════════════════════════════════════════════════════════
-//  Pixel delay for 1x1: 4-stage shift register.
-//  The controller adds 1 extra cycle (valid_raw NBA) before the
-//  WT_LATENCY shift, so total valid delay = 1 + WT_LATENCY = 4.
-//  Pixel delay must match: 4 stages.
-// ════════════════════════════════════════════════════════════════
 logic [63:0] pixel_1x1_d0, pixel_1x1_d1, pixel_1x1_d2, pixel_1x1_d3;
 
 always_ff @(posedge clk) begin
@@ -131,10 +90,6 @@ always_ff @(posedge clk) begin
     pixel_1x1_d3 <= pixel_1x1_d2;
 end
 
-// ════════════════════════════════════════════════════════════════
-//  Pixel mux for 1x1 mode: feed pixel to center [1][1], zeros elsewhere
-//  For 3x3 mode: use the full kernel window from pixel_3x3_d2
-// ════════════════════════════════════════════════════════════════
 logic [63:0] pixel_mux [0:2][0:2];
 
 always_comb begin
@@ -151,9 +106,6 @@ always_comb begin
     end
 end
 
-// ════════════════════════════════════════════════════════════════
-//  Bias Store
-// ════════════════════════════════════════════════════════════════
 bias_store #(
     .MAX_DEPTH (BIAS_DEPTH)
 ) u_bias_store (
@@ -168,9 +120,6 @@ bias_store #(
     .rd_valid    (bias_valid)
 );
 
-// ════════════════════════════════════════════════════════════════
-//  Weight Manager
-// ════════════════════════════════════════════════════════════════
 weight_manager #(
     .DEPTH (WT_DEPTH)
 ) u_weight_manager (
@@ -185,11 +134,6 @@ weight_manager #(
     .data_ready  (wt_data_ready)
 );
 
-// ════════════════════════════════════════════════════════════════
-//  Conv Controller
-//  Orchestrates: bias read → wait → conv (weight + pixel) → drain
-//  Delays conv_valid_in / conv_last_channel by WT_LATENCY internally
-// ════════════════════════════════════════════════════════════════
 conv_controller #(
     .WT_ADDR_WIDTH   (WT_ADDR_WIDTH),
     .BIAS_ADDR_WIDTH (BIAS_GROUP_BITS),
@@ -218,12 +162,6 @@ conv_controller #(
     .conv_last_channel(conv_last_channel)
 );
 
-// ════════════════════════════════════════════════════════════════
-//  Kernel Window
-//  Converts streaming pixel_in into 3×3 sliding window.
-//  Uses 2 lineBuffers + 6 delayLines internally.
-//  dout_valid goes high after priming delay.
-// ════════════════════════════════════════════════════════════════
 kernelWindow u_kernel_window (
     .clk        (clk),
     .rst        (rst),
@@ -235,11 +173,6 @@ kernelWindow u_kernel_window (
     .dout_valid (kw_dout_valid)
 );
 
-// ════════════════════════════════════════════════════════════════
-//  Conv 3x3: 8 parallel PEs computing 8 output channels
-//  For 1x1 mode: pixel_mux feeds center position only, weights have
-//  non-zero values only at spatial position 4 (center)
-// ════════════════════════════════════════════════════════════════
 conv_3x3 u_conv_3x3 (
     .clk          (clk),
     .rst          (rst),
@@ -252,10 +185,6 @@ conv_3x3 u_conv_3x3 (
     .data_valid   (conv_3x3_data_valid)
 );
 
-// ════════════════════════════════════════════════════════════════
-//  Quantizers ×8: conv_outs[i] (32-bit) → quant_out[i] (8-bit)
-//  Latency: 4 cycles from conv_data_valid → quant_valid
-// ════════════════════════════════════════════════════════════════
 logic [7:0]  quant_out [0:7];
 logic        quant_valid;
 logic [63:0] quant_packed;
@@ -283,17 +212,10 @@ always_comb begin
         quant_packed[i*8 +: 8] = quant_out[i];
 end
 
-// ════════════════════════════════════════════════════════════════
-//  MaxPool: operates on quantized 8-bit packed output
-//  img_width for 3x3 = cfg_img_width - 2 (conv output spatial width)
-//  img_width for 1x1 = cfg_img_width (no spatial reduction)
-//  channels  = 8 (always 8 output channels per conv_top call)
-// ════════════════════════════════════════════════════════════════
 logic [63:0] maxpool_data_out;
 logic        maxpool_valid_out;
 
-// Register config-derived signals to break timing paths
-// These are stable before processing starts
+
 (* max_fanout = 32 *) logic [15:0] maxpool_img_width_r;
 (* max_fanout = 32 *) logic        maxpool_stride_2_r;
 
@@ -319,10 +241,7 @@ maxPool u_maxpool (
     .valid_out (maxpool_valid_out)
 );
 
-// ════════════════════════════════════════════════════════════════
-//  Output mux: maxpool or direct quantizer bypass
-//  Use registered config to break timing path
-// ════════════════════════════════════════════════════════════════
+
 (* max_fanout = 32 *) logic cfg_use_maxpool_r;
 
 always_ff @(posedge clk) begin

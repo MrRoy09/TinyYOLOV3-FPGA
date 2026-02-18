@@ -42,9 +42,6 @@ logic [31:0] bias_pipe [0:3];
 
 logic signed [31:0] acc;
 
-// ════════════════════════════════════════════════════════════════════════════
-// Control Pipeline
-// ════════════════════════════════════════════════════════════════════════════
 always_ff @(posedge clk) begin
     if (rst) begin
         valid_pipe <= '0;
@@ -69,9 +66,6 @@ always_ff @(posedge clk) begin
     end
 end
 
-// ════════════════════════════════════════════════════════════════════════════
-// Stage 4: Accumulator + Output
-// ════════════════════════════════════════════════════════════════════════════
 always_ff @(posedge clk) begin
     if (rst) begin
         acc        <= 0;
@@ -91,9 +85,6 @@ always_ff @(posedge clk) begin
     end
 end
 
-// ════════════════════════════════════════════════════════════════════════════
-// Stage 1: Multiply (72 DSP48E2 multipliers)
-// ════════════════════════════════════════════════════════════════════════════
 genvar i, j;
 generate
     for (i = 0; i < 9; i++) begin : spatial_loop
@@ -112,10 +103,6 @@ generate
     end
 endgenerate
 
-// ════════════════════════════════════════════════════════════════════════════
-// Stage 2: Partial Sum (sum pairs of channels: 8→4 per spatial position)
-// This breaks the long 8-input adder chain into two 2-input adds
-// ════════════════════════════════════════════════════════════════════════════
 always_ff @(posedge clk) begin
     for (int k = 0; k < 9; k++) begin
         partial_sum[k][0] <= products[k][0] + products[k][1];
@@ -125,19 +112,12 @@ always_ff @(posedge clk) begin
     end
 end
 
-// ════════════════════════════════════════════════════════════════════════════
-// Stage 3: Spatial Sum + Cycle Sum
-// spatial_sum: combine 4 partial sums → 1 sum per spatial (9 total)
-// cycle_sum: combine 9 spatial sums → 1 total
-// ════════════════════════════════════════════════════════════════════════════
 always_ff @(posedge clk) begin
-    // Spatial reduction: 4 partials → 1 (balanced tree: (a+b)+(c+d))
     for (int k = 0; k < 9; k++) begin
         spatial_sum[k] <= (partial_sum[k][0] + partial_sum[k][1]) +
                           (partial_sum[k][2] + partial_sum[k][3]);
     end
 
-    // Cycle reduction: 9 spatials → 1 (balanced tree)
     cycle_sum <= ((spatial_sum[0] + spatial_sum[1]) + (spatial_sum[2] + spatial_sum[3])) +
                  ((spatial_sum[4] + spatial_sum[5]) + (spatial_sum[6] + spatial_sum[7])) +
                  spatial_sum[8];
