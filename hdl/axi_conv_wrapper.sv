@@ -139,11 +139,12 @@ localparam integer LP_XFER_SIZE_WIDTH = 32;
 // ============================================================================
 typedef enum logic [2:0] {
     ST_IDLE         = 3'd0,
-    ST_LOAD_WEIGHTS = 3'd1,
-    ST_LOAD_BIAS    = 3'd2,
-    ST_START        = 3'd3,
-    ST_PROCESS      = 3'd4,
-    ST_DONE         = 3'd5
+    ST_RESET        = 3'd1,  // Reset datapath before loading weights
+    ST_LOAD_WEIGHTS = 3'd2,
+    ST_LOAD_BIAS    = 3'd3,
+    ST_START        = 3'd4,
+    ST_PROCESS      = 3'd5,
+    ST_DONE         = 3'd6
 } state_t;
 
 state_t state, state_next;
@@ -239,13 +240,43 @@ end
 
 assign ap_start_pulse = ap_start & ~ap_start_r;
 
+// ============================================================================
+// Datapath Reset - controlled by ST_RESET state
+// This ensures maxpool line buffers and pipeline registers are cleared
+// between kernel invocations. Reset lasts 8 cycles (configurable).
+// ============================================================================
+localparam RESET_CYCLES = 8;
+logic [3:0] reset_cnt;
+logic       datapath_rst;
+logic       reset_done;
+
+always_ff @(posedge ap_clk) begin
+    if (areset) begin
+        reset_cnt    <= '0;
+        datapath_rst <= 1'b1;
+        reset_done   <= 1'b0;
+    end else if (state == ST_RESET) begin
+        datapath_rst <= 1'b1;  // Assert reset in ST_RESET state
+        if (reset_cnt < RESET_CYCLES - 1) begin
+            reset_cnt  <= reset_cnt + 1;
+            reset_done <= 1'b0;
+        end else begin
+            reset_done <= 1'b1;  // Signal FSM to move on
+        end
+    end else begin
+        reset_cnt    <= '0;
+        datapath_rst <= 1'b0;
+        reset_done   <= 1'b0;
+    end
+end
+
 // Latch wb_rd_done since it may fire before wt_unpack_done/bias_load_done
 // (due to read master's internal FIFO delaying AXI-Stream tlast)
 always_ff @(posedge ap_clk) begin
     if (areset)
         wb_rd_done_latch <= 1'b0;
-    else if ((state == ST_IDLE) && ap_start_pulse)
-        wb_rd_done_latch <= 1'b0;  // Clear on new transfer
+    else if (state == ST_RESET)
+        wb_rd_done_latch <= 1'b0;  // Clear during reset
     else if (wb_rd_done)
         wb_rd_done_latch <= 1'b1;  // Latch on pulse
     else if ((state == ST_LOAD_WEIGHTS) && (wb_rd_done_latch && wt_unpack_done))
@@ -273,6 +304,12 @@ always_comb begin
     case (state)
         ST_IDLE: begin
             if (ap_start_pulse)
+                state_next = ST_RESET;  // First reset the datapath
+        end
+
+        ST_RESET: begin
+            // Wait for reset to complete before loading weights
+            if (reset_done)
                 state_next = ST_LOAD_WEIGHTS;
         end
 
@@ -345,9 +382,9 @@ always_ff @(posedge ap_clk) begin
         wb_rd_start <= 1'b0;  // Default: pulse
 
         case (state)
-            ST_IDLE: begin
-                if (ap_start_pulse) begin
-                    // Start weight load
+            ST_RESET: begin
+                // Start weight load when reset completes (about to enter ST_LOAD_WEIGHTS)
+                if (reset_done) begin
                     wb_rd_start     <= 1'b1;
                     wb_rd_addr      <= weights_addr_axi;
                     wb_rd_size      <= num_weights;  // Size in bytes
@@ -452,7 +489,8 @@ always_ff @(posedge ap_clk) begin
 end
 
 // Address reset pulses
-assign wt_wr_addr_rst   = (state == ST_IDLE) && ap_start_pulse;
+// Weight address reset: happens when reset completes, about to start loading
+assign wt_wr_addr_rst   = (state == ST_RESET) && reset_done;
 assign bias_wr_addr_rst = (state == ST_LOAD_WEIGHTS) && (wb_rd_done || wb_rd_done_latch) && wt_unpack_done;
 
 // Route weight/bias data based on loading state
@@ -516,8 +554,8 @@ assign wt_wr_en   = wb_axis_tvalid && loading_weights;
 always_ff @(posedge ap_clk) begin
     if (areset)
         wt_unpack_done <= 1'b0;
-    else if ((state == ST_IDLE) && ap_start_pulse)
-        wt_unpack_done <= 1'b0;  // Clear on new transfer
+    else if (state == ST_RESET)
+        wt_unpack_done <= 1'b0;  // Clear during reset
     else if (wb_axis_tvalid && wb_axis_tlast && loading_weights)
         wt_unpack_done <= 1'b1;
 end
@@ -526,8 +564,8 @@ end
 always_ff @(posedge ap_clk) begin
     if (areset)
         bias_load_done <= 1'b0;
-    else if ((state == ST_IDLE) && ap_start_pulse)
-        bias_load_done <= 1'b0;  // Clear on new transfer
+    else if (state == ST_RESET)
+        bias_load_done <= 1'b0;  // Clear during reset
     else if (wb_axis_tvalid && wb_axis_tlast && loading_bias)
         bias_load_done <= 1'b1;
 end
@@ -619,7 +657,7 @@ assign output_axi_rready  = 1'b1;
 // ============================================================================
 conv_top u_conv_top (
     .clk              (ap_clk),
-    .rst              (areset),
+    .rst              (datapath_rst),  // Reset during ST_RESET state (clears pipeline/buffers)
 
     // Configuration (directly from AXI-Lite registers)
     .cfg_ci_groups    (cfg_ci_groups[9:0]),

@@ -143,8 +143,7 @@ conv_controller #(
     .MAXPOOL_LATENCY (4)
 ) u_conv_controller (
     .clk              (clk),
-    .rst              (rst),
-    .cfg_ci_groups    (cfg_ci_groups),
+    .rst              (rst),      .cfg_ci_groups    (cfg_ci_groups),
     .cfg_output_group (cfg_output_group),
     .cfg_wt_base_addr (cfg_wt_base_addr),
     .go               (go),
@@ -164,8 +163,7 @@ conv_controller #(
 
 kernelWindow u_kernel_window (
     .clk        (clk),
-    .rst        (rst),
-    .data_valid (pixel_in_valid),
+    .rst        (rst),      .data_valid (pixel_in_valid),
     .in_channels(cfg_in_channels),
     .img_width  (cfg_img_width),
     .pixel_in   (pixel_in),
@@ -175,8 +173,7 @@ kernelWindow u_kernel_window (
 
 conv_3x3 u_conv_3x3 (
     .clk          (clk),
-    .rst          (rst),
-    .valid_in     (conv_valid_in),
+    .rst          (rst),      .valid_in     (conv_valid_in),
     .last_channel (conv_last_channel),
     .pixels       (pixel_mux),
     .weights      (wt_data_out),
@@ -231,8 +228,7 @@ end
 
 maxPool u_maxpool (
     .clk       (clk),
-    .rst       (rst),
-    .img_width (maxpool_img_width_r),
+    .rst       (rst),      .img_width (maxpool_img_width_r),
     .channels  (16'd8),
     .stride_2  (maxpool_stride_2_r),
     .data_in   (quant_packed),
