@@ -3,3 +3,5 @@ v++ --link --platform /media/ubuntu/T7/Xilinx-tools/2025.1/Vitis/base_platforms/
 xclbinutil --input TinyYOLOV3_HW.xclbin --dump-section BITSTREAM:RAW:TinyYOLOV3_HW.bit && \
   echo 'all: { TinyYOLOV3_HW.bit }' > TinyYOLOV3_HW.bif && \
   bootgen -image TinyYOLOV3_HW.bif -arch zynqmp -process_bitstream bin -w -o TinyYOLOV3_HW.bit.bin
+
+g++ -std=c++17 -O2 -g -Wall -I/usr/include/xrt -o test_layer0_416 test_layer0_416.cpp -lxrt_coreutil -lpthread -lrt -ldl -luuid

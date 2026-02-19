@@ -312,9 +312,9 @@ def load_quant_params(path):
 
 if __name__ == "__main__":
 
-    weights_file = "sim/hardware-ai/folded_weights.npz"
+    weights_file = "./folded_weights.npz"
 
-    frozen_file = "sim/hardware-ai/quantized_params.npz"
+    frozen_file = "./quantized_params.npz"
 
     test_images = ["scripts/test_image.jpg", "scripts/person.jpg", "scripts/horses.jpg", 
 

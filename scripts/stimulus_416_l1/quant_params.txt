@@ -1,0 +1,5 @@
+# Layer 1 quantization parameters (per output group)
+og0: M=0x000001b1 n=16
+og1: M=0x0000017f n=16
+og2: M=0x00000162 n=16
+og3: M=0x000001bb n=16

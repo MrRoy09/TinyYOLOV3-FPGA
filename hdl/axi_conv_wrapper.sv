@@ -195,6 +195,12 @@ logic                                    px_axis_tvalid;
 logic                                    px_axis_tready;
 logic                                    px_axis_tlast;
 
+// Pixel counter for generating true last_pixel signal
+// (px_axis_tlast fires on every AXI burst, not just the final one)
+logic [LP_XFER_SIZE_WIDTH-1:0]           px_total_bytes_reg;  // Registered transfer size
+logic [LP_XFER_SIZE_WIDTH-1:0]           px_byte_count;       // Count of bytes received
+logic                                    px_true_last;        // True last pixel signal
+
 // Output write master signals
 logic                                    out_wr_start;
 logic                                    out_wr_done;
@@ -613,6 +619,38 @@ assign pixel_axi_wlast   = 1'b0;
 assign pixel_axi_bready  = 1'b1;
 
 // ============================================================================
+// Pixel Counter for True Last Pixel Detection
+// ============================================================================
+// The AXI read master's TLAST fires at the end of EVERY burst (max 256 beats),
+// not just the final transfer. For large images, this causes conv_controller
+// to think it's done after just the first 2KB. We need to count actual pixels
+// and generate a true last_pixel signal.
+
+// Register the transfer size when pixel DMA starts
+always_ff @(posedge ap_clk) begin
+    if (areset)
+        px_total_bytes_reg <= '0;
+    else if (px_rd_start)
+        px_total_bytes_reg <= px_rd_size;
+end
+
+// Count bytes received (each beat is 8 bytes for 64-bit interface)
+always_ff @(posedge ap_clk) begin
+    if (areset)
+        px_byte_count <= '0;
+    else if (state == ST_RESET)
+        px_byte_count <= '0;  // Reset counter at start of each kernel invocation
+    else if (px_axis_tvalid && px_axis_tready)
+        px_byte_count <= px_byte_count + (C_PIXEL_AXI_DATA_WIDTH / 8);  // +8 bytes per beat
+end
+
+// Generate true last pixel signal: HIGH only when we've received all pixels
+// The last pixel is when byte_count + 8 == total_bytes (i.e., this is the final beat)
+assign px_true_last = px_axis_tvalid && px_axis_tready &&
+                      ((px_byte_count + (C_PIXEL_AXI_DATA_WIDTH / 8)) >= px_total_bytes_reg) &&
+                      (px_total_bytes_reg != '0);
+
+// ============================================================================
 // Output AXI Write Master (64-bit)
 // ============================================================================
 TinyYOLOV3_HW_Complete_example_axi_write_master #(
@@ -690,7 +728,7 @@ conv_top u_conv_top (
     // Pixel input (from pixel AXI read master)
     .pixel_in         (px_axis_tdata),
     .pixel_in_valid   (px_axis_tvalid),
-    .pixel_in_last    (px_axis_tlast),
+    .pixel_in_last    (px_true_last),  // Use counted last, not AXI TLAST (which fires every burst)
 
     // Output (to output AXI write master)
     .data_out         (conv_data_out),
