@@ -171,6 +171,21 @@ for co = 0 .. C_out-1, step 4:
 ```
 Total beats: `C_out / 4`.
 
+> **⚠️ CRITICAL: Per-OG Bias Loading and cfg_output_group**
+>
+> When loading biases **per output group** (i.e., loading only 8 biases for the current OG each kernel invocation), the biases are always written to BRAM addresses **0 and 1** (since `bias_wr_addr_rst` resets the write pointer before each load).
+>
+> The `bias_store` reads from addresses `{cfg_output_group, 1'b0}` and `{cfg_output_group, 1'b1}`.
+>
+> **Therefore, `cfg_output_group` must be set to 0** when using per-OG bias loading, so that biases are read from addresses 0,1 where they were just written.
+>
+> In the AXI wrapper, `cfg_output_group` is mapped to `cfg_co_groups[6:0]`. The host must set:
+> ```cpp
+> run.set_arg(9, static_cast<uint32_t>(0));  // cfg_co_groups → cfg_output_group = 0
+> ```
+>
+> **Bug History:** Setting `cfg_co_groups = 1` caused bias_store to read from addresses 2,3 (garbage/zeros) instead of 0,1, resulting in outputs computed without biases (e.g., channel output of 58 instead of expected 23).
+
 ### Weight Loading (`weight_manager`)
 
 - **Storage:** 8 banks × 8 URAMs per bank. Each URAM entry is 72 bits (9 spatial positions × 8-bit weight).
