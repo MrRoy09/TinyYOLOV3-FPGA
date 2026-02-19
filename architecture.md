@@ -889,3 +889,147 @@ Output group 1:                         ╔═╗   ╔════════�
 │   └─────────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Future Optimizations
+
+### 1. BRAM-Based Pixel Cache
+
+**Problem:** The current architecture is memory-bound due to pixel re-streaming. For each output group, the entire input feature map is re-read from DDR, wasting bandwidth.
+
+**Current Resource Usage (Post-Implementation):**
+
+| Resource | Used | Available | Free | Util% |
+|----------|------|-----------|------|-------|
+| BRAM Tiles | 41 | 144 | **103** | 28.5% |
+| URAM | 64 | 64 | 0 | 100% |
+| DSP48E2 | 756 | 1248 | 492 | 60.6% |
+| LUT | 51,951 | 117,120 | 65,169 | 44.4% |
+
+**BRAM Breakdown:**
+
+| Component | BRAMs | Size | Purpose |
+|-----------|-------|------|---------|
+| Line buffers (×3) | ~21 | 96 KB | kernel_window (×2) + maxpool (×1) |
+| bias_store | ~4 | 16 KB | 256×128-bit |
+| AXI infrastructure | ~16 | 72 KB | Read/write master FIFOs, interconnect |
+| **Total Used** | 41 | 185 KB | |
+| **Free** | 103 | **463 KB** | Available for pixel cache |
+
+**Solution:** Add a BRAM-based pixel cache that stores the input feature map once, then replays it for each output group without DDR re-reads.
+
+**Layer Cacheability:**
+
+| Layer | Input Size | Fits in 463KB? | Output Groups | Cache Benefit |
+|-------|------------|----------------|---------------|---------------|
+| 0 | 418×418×8 = 1.4 MB | No | 2 | — |
+| 1 | 210×210×16 = 706 KB | No | 4 | — |
+| 2 | 106×106×32 = 360 KB | **Yes** | 8 | **8× fewer DDR reads** |
+| 3 | 54×54×64 = 187 KB | **Yes** | 16 | **16× fewer DDR reads** |
+| 4 | 28×28×128 = 100 KB | **Yes** | 32 | **32× fewer DDR reads** |
+| 5 | 14×14×256 = 50 KB | **Yes** | 64 | **64× fewer DDR reads** |
+| 6+ | Smaller | **Yes** | 64+ | **64× fewer DDR reads** |
+
+**Proposed Architecture:**
+
+```
+                           ┌─────────────────────────────┐
+                           │      Pixel Cache (BRAM)     │
+                           │  ~450KB, 57K × 64-bit       │
+                           │  ~100 RAMB36E2              │
+                           └──────────┬──────────────────┘
+                                      │
+    DDR ──────► AXI Read ────►  Cache Fill    ────► conv_top
+                Master         Controller           │
+                                  ▲                 │
+                                  │                 │
+                              Cache Replay ◄────────┘
+                              (for OG 1,2,3...)
+```
+
+**Control Flow Change:**
+
+```
+CURRENT (memory-bound):
+  for og in range(num_output_groups):
+      load_weights(og)           # DDR read
+      stream_pixels_from_ddr()   # DDR read (REPEATED!)
+      process()
+      write_output()             # DDR write
+
+OPTIMIZED (compute-bound for layers 2+):
+  cache_pixels_to_bram()         # DDR read (ONCE!)
+  for og in range(num_output_groups):
+      load_weights(og)           # DDR read
+      stream_pixels_from_bram()  # BRAM read (FAST!)
+      process()
+      write_output()             # DDR write
+```
+
+**Performance Impact:**
+
+| Layer | Output Groups | Current DDR Reads | With Cache | Speedup |
+|-------|---------------|-------------------|------------|---------|
+| 0 | 2 | 2× | 2× (no cache) | 1× |
+| 1 | 4 | 4× | 4× (no cache) | 1× |
+| 2 | 8 | 8× | **1×** | **8×** |
+| 3 | 16 | 16× | **1×** | **16×** |
+| 4 | 32 | 32× | **1×** | **32×** |
+| 5 | 64 | 64× | **1×** | **64×** |
+
+**Estimated FPS Improvement:**
+
+| Metric | Current | With Pixel Cache |
+|--------|---------|------------------|
+| Layer 0-1 time | ~15 ms | ~15 ms (unchanged) |
+| Layer 2-5 time | ~25 ms | ~3 ms |
+| **Total inference** | ~40 ms | **~18 ms** |
+| **FPS** | ~23 FPS | **~55 FPS** |
+
+**Implementation Requirements:**
+
+1. New module: `pixel_cache.sv` (~100 BRAMs, simple dual-port)
+2. New config register: `cfg_use_cache` (CPU decides per-layer)
+3. Modified FSM: FILL_CACHE state before PROCESS for cacheable layers
+4. Cache read port: Same interface as pixel AXI stream
+
+---
+
+### 2. Increased Output Parallelism ($P_{out}=16$)
+
+**Current:** $P_{out}=8$ uses 576 DSPs (46% of available 1,248)
+
+**Potential:** $P_{out}=16$ would use 1,152 DSPs (92%), doubling throughput for compute-bound layers.
+
+**Trade-offs:**
+- Weight bandwidth: Need 2× weight reads per cycle (may require dual-port URAM or interleaved banks)
+- Routing congestion: Higher fanout from kernel_window to 16 filter clusters
+- URAM capacity: Same depth, but need 128 URAMs (not available) unless weights are time-multiplexed
+
+**Recommendation:** Pursue pixel cache first (simpler, higher impact for memory-bound layers).
+
+---
+
+### 3. Strip Caching for Layers 0-1
+
+For layers too large to fully cache, implement horizontal strip caching:
+
+- Cache 64 rows at a time (~214 KB for layer 0)
+- Process all output groups for the strip
+- Advance to next strip
+
+This reduces DDR reads by the output group count even for large layers.
+
+---
+
+### 4. Clock Domain Crossing for Higher Memory Bandwidth
+
+Current limitation: AXI HP ports max out at ~250 MHz, limiting memory bandwidth.
+
+**Potential optimization:**
+- Run conv datapath at 200 MHz (proven timing)
+- Run AXI interfaces at 300 MHz with async FIFOs
+- Gain ~50% more memory bandwidth
+
+**Complexity:** Requires careful CDC handling and deeper FIFOs.

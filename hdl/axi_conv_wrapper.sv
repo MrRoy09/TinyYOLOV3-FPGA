@@ -175,6 +175,13 @@ logic [71:0] wt_wr_data;
 logic        wt_wr_en;
 logic        wt_unpack_done;
 
+// Latch wb_rd_done since it's a pulse that may fire before wt_unpack_done
+// (due to read master's FIFO delaying the AXI-Stream tlast)
+logic        wb_rd_done_latch;
+
+// Similar latch for bias loading - wait for tlast before clearing loading_bias
+logic        bias_load_done;
+
 // Pixel read master signals
 logic                                    px_rd_start;
 logic                                    px_rd_done;
@@ -206,6 +213,9 @@ logic        conv_done_latch;
 logic [63:0] conv_data_out;
 logic        conv_data_out_valid;
 
+// Latch for write done (out_wr_done is a pulse, need to latch it)
+logic        out_wr_done_latch;
+
 // Bias routing
 logic        bias_wr_en;
 logic [127:0] bias_wr_data;
@@ -216,6 +226,9 @@ logic        wt_wr_addr_rst;
 logic loading_weights;
 logic loading_bias;
 
+// Track first output to delay write master start
+logic first_output_seen;
+
 // ============================================================================
 // Reset and ap_start edge detection
 // ============================================================================
@@ -225,6 +238,21 @@ always_ff @(posedge ap_clk) begin
 end
 
 assign ap_start_pulse = ap_start & ~ap_start_r;
+
+// Latch wb_rd_done since it may fire before wt_unpack_done/bias_load_done
+// (due to read master's internal FIFO delaying AXI-Stream tlast)
+always_ff @(posedge ap_clk) begin
+    if (areset)
+        wb_rd_done_latch <= 1'b0;
+    else if ((state == ST_IDLE) && ap_start_pulse)
+        wb_rd_done_latch <= 1'b0;  // Clear on new transfer
+    else if (wb_rd_done)
+        wb_rd_done_latch <= 1'b1;  // Latch on pulse
+    else if ((state == ST_LOAD_WEIGHTS) && (wb_rd_done_latch && wt_unpack_done))
+        wb_rd_done_latch <= 1'b0;  // Clear when done with weights (before starting bias)
+    else if ((state == ST_LOAD_BIAS) && (wb_rd_done_latch && bias_load_done))
+        wb_rd_done_latch <= 1'b0;  // Clear when done with bias
+end
 
 // ============================================================================
 // FSM State Register
@@ -249,12 +277,13 @@ always_comb begin
         end
 
         ST_LOAD_WEIGHTS: begin
-            if (wb_rd_done && wt_unpack_done)
+            if ((wb_rd_done || wb_rd_done_latch) && wt_unpack_done)
                 state_next = ST_LOAD_BIAS;
         end
 
         ST_LOAD_BIAS: begin
-            if (wb_rd_done)
+            // Wait for all bias data to arrive via AXI-Stream (not just ctrl_done)
+            if ((wb_rd_done || wb_rd_done_latch) && bias_load_done)
                 state_next = ST_START;
         end
 
@@ -264,7 +293,8 @@ always_comb begin
         end
 
         ST_PROCESS: begin
-            if (conv_done_latch && out_wr_done)
+            // Both conv_top and write master must complete
+            if (conv_done_latch && out_wr_done_latch)
                 state_next = ST_DONE;
         end
 
@@ -327,7 +357,7 @@ always_ff @(posedge ap_clk) begin
             end
 
             ST_LOAD_WEIGHTS: begin
-                if (wb_rd_done && wt_unpack_done) begin
+                if ((wb_rd_done || wb_rd_done_latch) && wt_unpack_done) begin
                     // Start bias load
                     wb_rd_start     <= 1'b1;
                     wb_rd_addr      <= bias_addr_axi;
@@ -338,8 +368,9 @@ always_ff @(posedge ap_clk) begin
             end
 
             ST_LOAD_BIAS: begin
-                if (wb_rd_done) begin
-                    loading_bias <= 1'b0;
+                // Keep loading_bias high until ALL data arrives via AXI-Stream
+                if ((wb_rd_done || wb_rd_done_latch) && bias_load_done) begin
+                    loading_bias <= 1'b0;  // Only clear when transitioning out
                 end
             end
 
@@ -368,7 +399,18 @@ always_ff @(posedge ap_clk) begin
     end
 end
 
-// Output write master control
+// Track when first output arrives (for debug)
+always_ff @(posedge ap_clk) begin
+    if (areset)
+        first_output_seen <= 1'b0;
+    else if (state == ST_IDLE)
+        first_output_seen <= 1'b0;  // Clear on new operation
+    else if (conv_data_out_valid)
+        first_output_seen <= 1'b1;  // Latch on first valid output
+end
+
+// Output write master control - start in ST_START before outputs arrive
+// The write master needs ctrl_start BEFORE data arrives on s_axis
 always_ff @(posedge ap_clk) begin
     if (areset) begin
         out_wr_start <= 1'b0;
@@ -377,6 +419,7 @@ always_ff @(posedge ap_clk) begin
     end else begin
         out_wr_start <= 1'b0;
 
+        // Start write master in ST_START (before any output data arrives)
         if (state == ST_START) begin
             out_wr_start <= 1'b1;
             out_wr_addr  <= output_addr_axi;
@@ -398,9 +441,19 @@ always_ff @(posedge ap_clk) begin
         conv_done_latch <= 1'b1;
 end
 
+// Latch out_wr_done pulse (write master's ctrl_done is a pulse)
+always_ff @(posedge ap_clk) begin
+    if (areset)
+        out_wr_done_latch <= 1'b0;
+    else if (state == ST_START)
+        out_wr_done_latch <= 1'b0;
+    else if (out_wr_done)
+        out_wr_done_latch <= 1'b1;
+end
+
 // Address reset pulses
 assign wt_wr_addr_rst   = (state == ST_IDLE) && ap_start_pulse;
-assign bias_wr_addr_rst = (state == ST_LOAD_WEIGHTS) && wb_rd_done && wt_unpack_done;
+assign bias_wr_addr_rst = (state == ST_LOAD_WEIGHTS) && (wb_rd_done || wb_rd_done_latch) && wt_unpack_done;
 
 // Route weight/bias data based on loading state
 assign bias_wr_en   = loading_bias && wb_axis_tvalid && wb_axis_tready;
@@ -467,6 +520,16 @@ always_ff @(posedge ap_clk) begin
         wt_unpack_done <= 1'b0;  // Clear on new transfer
     else if (wb_axis_tvalid && wb_axis_tlast && loading_weights)
         wt_unpack_done <= 1'b1;
+end
+
+// Track when bias loading is done (latch on tlast during bias phase)
+always_ff @(posedge ap_clk) begin
+    if (areset)
+        bias_load_done <= 1'b0;
+    else if ((state == ST_IDLE) && ap_start_pulse)
+        bias_load_done <= 1'b0;  // Clear on new transfer
+    else if (wb_axis_tvalid && wb_axis_tlast && loading_bias)
+        bias_load_done <= 1'b1;
 end
 
 // ============================================================================
@@ -597,7 +660,8 @@ conv_top u_conv_top (
 );
 
 // Connect conv_top output to write master
-assign out_axis_tdata  = conv_data_out;
+// Gate data to prevent X propagation when not valid
+assign out_axis_tdata  = conv_data_out_valid ? conv_data_out : '0;
 assign out_axis_tvalid = conv_data_out_valid;
 
 // Pixel stream ready (conv_top doesn't have backpressure, always accept)
