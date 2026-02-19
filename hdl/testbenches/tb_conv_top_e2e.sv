@@ -113,11 +113,11 @@ module tb_conv_top_e2e;
     logic [4:0]  quant_n_val [0:1];
 
     initial begin
-        // OG0: M=11001 (0x00002AF9), n=16
-        // OG1: M=8354  (0x000020A2), n=16
-        quant_m_val[0] = 32'h00002AF9;
+        // Per-layer quantization from quantized_params.npz (hardware_sim.py golden)
+        // M=0xC0 (192), n=16
+        quant_m_val[0] = 32'h000000C0;
         quant_n_val[0] = 5'd16;
-        quant_m_val[1] = 32'h000020A2;
+        quant_m_val[1] = 32'h000000C0;
         quant_n_val[1] = 5'd16;
     end
 

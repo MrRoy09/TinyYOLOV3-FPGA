@@ -1,0 +1,12 @@
+layer=0
+img_h=416
+img_w=416
+padded_h=418
+padded_w=418
+cin=3
+cin_pad=8
+cout=16
+ci_groups=1
+co_groups=2
+M=0x000000c0
+n=16

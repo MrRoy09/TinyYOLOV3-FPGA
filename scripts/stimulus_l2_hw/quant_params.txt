@@ -1,0 +1,5 @@
+# Layer 2 quantization (from quantized_params.npz)
+og0: M=0x000002bc n=16
+og1: M=0x000002bc n=16
+og2: M=0x000002bc n=16
+og3: M=0x000002bc n=16

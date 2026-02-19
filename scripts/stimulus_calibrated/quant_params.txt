@@ -1,0 +1,5 @@
+# Layer 0 CALIBRATED quantization parameters
+M=0x000000c0
+n=16
+o_scale=2.2174506187438965
+prev_scale=127.0

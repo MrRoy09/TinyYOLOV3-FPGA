@@ -892,6 +892,84 @@ Output group 1:                         ╔═╗   ╔════════�
 
 ---
 
+## Calibrated Quantization Parameters (CRITICAL)
+
+**IMPORTANT:** The hardware MUST use calibrated quantization parameters from `sim/hardware-ai/quantized_params.npz` for accurate inference. Using uncalibrated/computed parameters will result in severe accuracy loss due to saturation.
+
+### Why Calibrated Parameters?
+
+The `hardware_sim.py` model achieves high INT8 accuracy by:
+1. Running calibration on representative data (e.g., COCO subset)
+2. Computing optimal per-layer output scales (`o_scale`) based on actual activation distributions
+3. Pre-computing M values that properly scale outputs to INT8 range
+
+**Key insight:** The output scale (`o_scale`) varies significantly across layers based on activation statistics:
+
+| Layer | o_scale | M (hex) | Notes |
+|-------|---------|---------|-------|
+| 0 | 2.2175 | 0xC0 | Very low scale due to early activations |
+| 1 | 3.8 | 0x6E | |
+| 2 | 5.1 | 0x52 | |
+| ... | ... | ... | |
+| 6 | 20.1 | 0x15 | High scale for deeper layers |
+
+### Calibrated vs Uncalibrated Comparison
+
+| Parameter | Uncalibrated | Calibrated | Impact |
+|-----------|--------------|------------|--------|
+| Layer 0 M | 0x2AF9 (11001) | 0xC0 (192) | **57× smaller** |
+| Output range | [-128, 127] (saturated) | [-12, 76] (precise) | Severe accuracy loss without calibration |
+| Biases | Computed on-the-fly | Pre-scaled in NPZ | Exact match with hardware_sim.py |
+
+### Required Files
+
+- **`sim/hardware-ai/quantized_params.npz`** — Contains all calibrated parameters:
+  - `l{N}_M` — Quantization multiplier for layer N
+  - `l{N}_n` — Shift amount for layer N (typically 8)
+  - `l{N}_o_scale` — Output scale for layer N
+  - `l{N}_q_weights` — Pre-quantized INT8 weights
+  - `l{N}_q_biases` — Pre-scaled INT32 biases
+  - `input_scale` — Scale for input normalization
+
+### How to Use Calibrated Parameters
+
+1. **For stimulus generation:** Use `scripts/gen_stimulus_from_calibrated.py`
+   ```bash
+   python3 scripts/gen_stimulus_from_calibrated.py --layer 0
+   ```
+
+2. **For testbench configuration:** Set `cfg_quant_m` to calibrated value
+   ```systemverilog
+   // CORRECT: Use calibrated M from quantized_params.npz
+   write_register(32'h048, 32'h000000C0);  // Layer 0: M = 0xC0
+
+   // WRONG: Using computed M will cause saturation
+   // write_register(32'h048, 32'h00002AF9);  // DO NOT USE
+   ```
+
+3. **For C++ host code:** Load parameters from NPZ or pre-generated JSON
+   ```cpp
+   // Per-layer M values (calibrated)
+   const uint32_t quant_m[NUM_LAYERS] = {
+       0xC0,   // Layer 0
+       0x6E,   // Layer 1
+       // ... (values from quantized_params.npz)
+   };
+   ```
+
+### Regenerating Calibrated Parameters
+
+If model weights or architecture change, re-run calibration:
+
+```bash
+cd sim/hardware-ai
+python3 hardware_sim.py --calibrate --num_images 100
+```
+
+This updates `quantized_params.npz` with new optimal scales.
+
+---
+
 ## Future Optimizations
 
 ### 1. BRAM-Based Pixel Cache

@@ -3,6 +3,12 @@
 Generate stimulus files for end-to-end conv_top verification using
 YOLOv3-tiny layer 1 weights on a small 4x4 synthetic image.
 
+This script matches hardware_sim.py quantization:
+- Signed int8 pixels
+- Leaky ReLU applied BEFORE quantization (on accumulator)
+- Per-layer quantization (same M for all output groups)
+- Biases scaled by (input_scale * w_scale)
+
 Layer 1: 16->32 channels, 3x3 conv, batch_norm, leaky ReLU, maxpool stride-2
 Hardware: Pin=8 (Cin=16, no padding needed), Pout=8, ci_groups=2, co_groups=4
 
@@ -27,6 +33,10 @@ COUT = 32
 CO_GROUPS = 4
 POUT = 8
 SEED = 42
+
+# Input scale for layer 1 (output scale from layer 0)
+# For simplicity, assume layer 0 output is already in a good int8 range
+INPUT_SCALE = 1.0  # Layer 1 input is already quantized int8
 
 WEIGHTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "yolov3-tiny.weights")
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stimulus_l1")
@@ -65,51 +75,52 @@ def fold_bn(weights, biases, scales, means, variances, eps=1e-5):
     return w_folded, b_folded
 
 
-def quantize_weights_biases(w_folded, b_folded):
-    w_int8 = np.zeros((COUT, CIN_PAD, 3, 3), dtype=np.int8)
-    b_int32 = np.zeros(COUT, dtype=np.int32)
-    quant_m = np.zeros(CO_GROUPS, dtype=np.uint64)
-    quant_n = np.zeros(CO_GROUPS, dtype=np.int32)
-    w_scales = np.zeros(CO_GROUPS, dtype=np.float64)
+def quantize_weights_biases_hwsim(w_folded, b_folded, prev_scale=1.0):
+    """
+    Quantize weights and biases matching hardware_sim.py approach.
+    """
+    # Per-layer weight scale (all filters use same scale)
+    w_max = np.max(np.abs(w_folded))
+    w_scale = 127.0 / w_max if w_max > 0 else 1.0
 
-    for og in range(CO_GROUPS):
-        fs, fe = og * POUT, (og + 1) * POUT
-        w_og = w_folded[fs:fe]
-        w_max = np.max(np.abs(w_og))
-        w_scale = 127.0 / w_max if w_max > 0 else 1.0
-        w_scales[og] = w_scale
+    # Quantize weights
+    w_int8 = np.clip(np.round(w_folded * w_scale), -128, 127).astype(np.int8)
 
-        w_int8[fs:fe] = np.clip(np.round(w_og * w_scale), -128, 127).astype(np.int8)
-        b_int32[fs:fe] = np.round(b_folded[fs:fe] * w_scale).astype(np.int32)
+    # Quantize biases: scaled by (prev_scale * w_scale)
+    b_int32 = np.round(b_folded * (prev_scale * w_scale)).astype(np.int32)
 
-        n = 16
+    # Compute M and n for quantization
+    n = 16
+    m_val = round(2**n / w_scale)
+    while m_val > 0xFFFFFFFF:
+        n -= 1
         m_val = round(2**n / w_scale)
-        while m_val > 0xFFFFFFFF:
-            n -= 1
-            m_val = round(2**n / w_scale)
-        quant_m[og] = m_val
-        quant_n[og] = n
 
-    print(f"Weight scales: {w_scales}")
-    print(f"Quant M: {quant_m}")
-    print(f"Quant n: {quant_n}")
-    for og in range(CO_GROUPS):
-        print(f"  OG{og}: M={quant_m[og]}, n={quant_n[og]}, effective_scale={quant_m[og]/2**quant_n[og]:.6f}, ideal={1/w_scales[og]:.6f}")
+    quant_m = m_val
+    quant_n = n
 
-    return w_int8, b_int32, quant_m, quant_n, w_scales
+    print(f"Per-layer weight scale: {w_scale:.6f}")
+    print(f"Per-layer M=0x{quant_m:08x} ({quant_m}), n={quant_n}")
+    print(f"Effective scale: {quant_m / 2**quant_n:.6f}, ideal: {1/w_scale:.6f}")
+
+    return w_int8, b_int32, quant_m, quant_n, w_scale
 
 
 def generate_image():
+    """Generate synthetic image as signed int8."""
     rng = np.random.RandomState(SEED)
-    img = rng.randint(0, 256, size=(IMG_H, IMG_W, CIN), dtype=np.uint8)
-    # No channel padding needed (CIN == CIN_PAD)
-    img_full = np.zeros((PADDED_H, PADDED_W, CIN_PAD), dtype=np.uint8)
+    # Generate random int8 values to simulate layer 0 output
+    img = rng.randint(-128, 128, size=(IMG_H, IMG_W, CIN), dtype=np.int8)
+
+    # Spatial padding for conv (1 pixel zero border)
+    img_full = np.zeros((PADDED_H, PADDED_W, CIN_PAD), dtype=np.int8)
     img_full[PAD:PAD+IMG_H, PAD:PAD+IMG_W, :] = img
-    return img_full  # (6, 6, 16) uint8
+
+    return img_full  # (6, 6, 16) int8
 
 
 def reference_conv(img, w_int8, b_int32, og):
-    """Compute conv for one output group matching RTL conv_pe arithmetic."""
+    """Compute conv for one output group with signed int8 pixels."""
     out_h = PADDED_H - 2
     out_w = PADDED_W - 2
     fstart = og * POUT
@@ -122,7 +133,7 @@ def reference_conv(img, w_int8, b_int32, og):
                 for ky in range(3):
                     for kx in range(3):
                         for ch in range(CIN_PAD):
-                            pixel = np.int64(img[r + ky, c + kx, ch])
+                            pixel = np.int64(np.int8(img[r + ky, c + kx, ch]))
                             weight = np.int64(np.int8(w_int8[fstart + f, ch, ky, kx]))
                             acc += pixel * weight
                 acc += np.int64(b_int32[fstart + f])
@@ -132,7 +143,7 @@ def reference_conv(img, w_int8, b_int32, og):
 
 
 def reference_quantize(conv_out, M, n, use_relu=True):
-    """Match RTL quantizer.sv arithmetic."""
+    """Match new RTL quantizer.sv: leaky FIRST, then quantize."""
     H, W, F = conv_out.shape
     result = np.zeros((H, W, F), dtype=np.int8)
 
@@ -140,10 +151,18 @@ def reference_quantize(conv_out, M, n, use_relu=True):
         for c in range(W):
             for f in range(F):
                 val = int(conv_out[r, c, f])
+
+                # Stage 1: Leaky ReLU FIRST (on accumulator)
+                if use_relu and val < 0:
+                    val = val >> 3
+
+                # Stage 2: Multiply by M
                 mult = val * int(M)
+
+                # Stage 3: Shift by n
                 shifted = mult >> int(n)
-                if use_relu and shifted < 0:
-                    shifted = shifted >> 3
+
+                # Stage 4: Clamp to INT8
                 shifted = max(-128, min(127, shifted))
                 result[r, c, f] = np.int8(shifted)
 
@@ -183,37 +202,23 @@ def write_hex(path, words, width_bits):
 
 
 def pack_pixel_stream(img):
-    """
-    Pack (6,6,16) uint8 → list of 64-bit words.
-    16 channels = 2 ci_groups of 8 channels each.
-    For each spatial position: 2 words (ch0-7, ch8-15).
-    Total: 6×6×2 = 72 words per OG.
-    """
+    """Pack (6,6,16) int8 → list of 64-bit words (2 per spatial position)."""
     words = []
     for r in range(PADDED_H):
         for c in range(PADDED_W):
             for cig in range(CI_GROUPS):
                 val = 0
                 for ch in range(8):
-                    val |= int(img[r, c, cig * 8 + ch]) << (ch * 8)
+                    b = int(np.int8(img[r, c, cig * 8 + ch]))
+                    if b < 0:
+                        b = b & 0xFF
+                    val |= b << (ch * 8)
                 words.append(val)
     return words
 
 
 def pack_weight_stream(w_int8, og):
-    """
-    Pack weights for one output group in addr→bank→uram order (72-bit words).
-
-    Streaming order (matching weight_manager wr_cnt):
-      for addr in range(ci_groups):       # wr_cnt[ADDR_WIDTH+5:6]
-        for bank in range(8):             # wr_cnt[5:3] — which filter in og
-          for uram in range(8):           # wr_cnt[2:0] — which input channel
-            stream 72-bit word
-
-    Each 72-bit word = 9 spatial weights for filter (og*8+bank), channel (uram):
-      word = {w[2][2], w[2][1], w[2][0], w[1][2], w[1][1], w[1][0], w[0][2], w[0][1], w[0][0]}
-      w[0][0] at bits[7:0] (LSB), w[2][2] at bits[71:64] (MSB)
-    """
+    """Pack weights for one output group in addr→bank→uram order (72-bit words)."""
     words = []
     for addr in range(CI_GROUPS):
         for bank in range(8):
@@ -233,11 +238,7 @@ def pack_weight_stream(w_int8, og):
 
 
 def pack_all_biases(b_int32):
-    """
-    Pack all 32 biases as 128-bit words for bias_store DMA.
-    bias_store expects 128-bit words, 4 biases per word.
-    For 32 biases: 8 words.
-    """
+    """Pack all 32 biases as 128-bit words for bias_store DMA."""
     words = []
     for i in range(0, COUT, 4):
         val = 0
@@ -251,7 +252,7 @@ def pack_all_biases(b_int32):
 
 
 def pack_maxpool_output(mp_out):
-    """Pack (2,2,8) int8 maxpool output as 64-bit words. ch0 at bits[7:0]."""
+    """Pack (2,2,8) int8 maxpool output as 64-bit words."""
     words = []
     oh, ow, _ = mp_out.shape
     for r in range(oh):
@@ -267,7 +268,7 @@ def pack_maxpool_output(mp_out):
 
 
 def pack_quant_output(q_out):
-    """Pack (4,4,8) int8 quant output as 64-bit words. ch0 at bits[7:0]."""
+    """Pack (4,4,8) int8 quant output as 64-bit words."""
     words = []
     H, W, _ = q_out.shape
     for r in range(H):
@@ -296,14 +297,15 @@ if __name__ == "__main__":
     print(f"W_folded range: [{w_folded.min():.3f}, {w_folded.max():.3f}]")
     print(f"B_folded range: [{b_folded.min():.3f}, {b_folded.max():.3f}]")
 
-    print("\n=== Quantizing ===")
-    w_int8, b_int32, quant_m, quant_n, w_scales = quantize_weights_biases(w_folded, b_folded)
+    print("\n=== Quantizing (hardware_sim.py style) ===")
+    w_int8, b_int32, quant_m, quant_n, w_scale = quantize_weights_biases_hwsim(w_folded, b_folded)
     print(f"W_int8 range: [{w_int8.min()}, {w_int8.max()}]")
     print(f"B_int32 range: [{b_int32.min()}, {b_int32.max()}]")
 
-    print("\n=== Generating image ===")
+    print("\n=== Generating image (int8) ===")
     img = generate_image()
-    print(f"Image shape: {img.shape}")
+    print(f"Image shape: {img.shape}, dtype: {img.dtype}")
+    print(f"Pixel range: [{img.min()}, {img.max()}]")
 
     print("\n=== Computing references ===")
     for og in range(CO_GROUPS):
@@ -311,7 +313,7 @@ if __name__ == "__main__":
         conv_out = reference_conv(img, w_int8, b_int32, og)
         print(f"Conv out range: [{conv_out.min()}, {conv_out.max()}]")
 
-        quant_out = reference_quantize(conv_out, quant_m[og], quant_n[og], use_relu=True)
+        quant_out = reference_quantize(conv_out, quant_m, quant_n, use_relu=True)
         print(f"Quant out range: [{quant_out.min()}, {quant_out.max()}]")
 
         mp_out = reference_maxpool(quant_out)
@@ -343,8 +345,9 @@ if __name__ == "__main__":
 
     # Write quant params
     with open(os.path.join(OUT_DIR, "quant_params.txt"), "w") as f:
-        for og in range(CO_GROUPS):
-            f.write(f"og{og}: M=0x{quant_m[og]:08x} n={quant_n[og]}\n")
+        f.write(f"# Per-layer quantization (matching hardware_sim.py)\n")
+        f.write(f"M=0x{quant_m:08x}\n")
+        f.write(f"n={quant_n}\n")
 
     print(f"\n=== Files written to {OUT_DIR} ===")
     for fn in sorted(os.listdir(OUT_DIR)):

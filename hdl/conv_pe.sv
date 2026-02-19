@@ -26,14 +26,17 @@ module conv_pe #()
 // ════════════════════════════════════════════════════════════════════════════
 
 // Stage 1 outputs: 9 spatial × 8 channel products
-(* use_dsp = "yes" *) logic signed [17:0] products [0:8][0:7];
+// int8 × int8 = int16 (signed 8-bit × signed 8-bit)
+(* use_dsp = "yes" *) logic signed [15:0] products [0:8][0:7];
 
 // Stage 2 outputs: 9 spatial × 4 partial sums (pairs of channels)
-logic signed [18:0] partial_sum [0:8][0:3];
+// 16-bit + 16-bit = 17-bit
+logic signed [16:0] partial_sum [0:8][0:3];
 
 // Stage 3 outputs: 9 spatial sums + 1 cycle sum
-logic signed [20:0] spatial_sum [0:8];
-logic signed [24:0] cycle_sum;
+// 4 partials (8 products) = 19-bit, 9 spatials (72 products) = 23-bit
+logic signed [18:0] spatial_sum [0:8];
+logic signed [22:0] cycle_sum;
 
 // Control pipeline (4 stages to match data path)
 logic [3:0] valid_pipe;
@@ -89,10 +92,12 @@ genvar i, j;
 generate
     for (i = 0; i < 9; i++) begin : spatial_loop
         for (j = 0; j < 8; j++) begin : channel_loop
-            logic signed [8:0] pixel_byte;
-            logic signed [8:0] weight_byte;
+            logic signed [7:0] pixel_byte;
+            logic signed [7:0] weight_byte;
 
-            assign pixel_byte  = $signed({1'b0, pixels[i/3][i%3][j*8 +: 8]});
+            // Pixels are now SIGNED int8 (matching hardware_sim.py)
+            // Input range: [-128, 127] where 127 = max brightness
+            assign pixel_byte  = $signed(pixels[i/3][i%3][j*8 +: 8]);
             assign weight_byte = $signed(weights[(i*64 + j*8) +: 8]);
 
             // No reset on multiply - allows DSP48E2 inference
