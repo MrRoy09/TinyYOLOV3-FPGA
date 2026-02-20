@@ -298,6 +298,16 @@ def main():
 
         print(f"  Saved {co_groups} output groups")
 
+        # Special: Save layer 4 conv output (before maxpool) for concat in layer 11
+        if hw_layer == 4:
+            # Layer 4 conv output is NPZ 8 (26x26x256, before maxpool)
+            layer4_conv_nchw = model.layer_outputs[8]
+            layer4_conv_nhwc = np.transpose(layer4_conv_nchw[0], (1, 2, 0))
+            layer4_conv_path = os.path.join(args.output_dir, 'layer4_conv.bin')
+            with open(layer4_conv_path, 'wb') as f:
+                f.write(layer4_conv_nhwc.astype(np.int8).tobytes())
+            print(f"  [SPECIAL] Saved Layer 4 conv output (26x26x256) for concat: {os.path.getsize(layer4_conv_path):,} bytes")
+
         # Save config
         config_path = os.path.join(layer_dir, 'config.txt')
         with open(config_path, 'w') as f:

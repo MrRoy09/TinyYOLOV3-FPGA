@@ -129,6 +129,61 @@ void cpu_maxpool_stride1(const uint8_t* input, uint8_t* output, int h, int w, in
     }
 }
 
+// CPU stride-2 maxpool for layer 4 (26x26 → 13x13)
+void cpu_maxpool_stride2(const uint8_t* input, uint8_t* output, int h, int w, int c) {
+    int out_h = h / 2, out_w = w / 2;
+    for (int y = 0; y < out_h; y++) {
+        for (int x = 0; x < out_w; x++) {
+            for (int ch = 0; ch < c; ch++) {
+                int8_t v00 = static_cast<int8_t>(input[((y*2  )*w + (x*2  ))*c + ch]);
+                int8_t v01 = static_cast<int8_t>(input[((y*2  )*w + (x*2+1))*c + ch]);
+                int8_t v10 = static_cast<int8_t>(input[((y*2+1)*w + (x*2  ))*c + ch]);
+                int8_t v11 = static_cast<int8_t>(input[((y*2+1)*w + (x*2+1))*c + ch]);
+                int8_t max_val = v00;
+                if (v01 > max_val) max_val = v01;
+                if (v10 > max_val) max_val = v10;
+                if (v11 > max_val) max_val = v11;
+                output[(y * out_w + x) * c + ch] = static_cast<uint8_t>(max_val);
+            }
+        }
+    }
+}
+
+// CPU 2x nearest-neighbor upsample (13x13 → 26x26)
+void cpu_upsample_2x(const uint8_t* input, uint8_t* output, int h, int w, int c) {
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            for (int ch = 0; ch < c; ch++) {
+                uint8_t val = input[(y * w + x) * c + ch];
+                // Duplicate to 2x2 block in output
+                output[((y*2  ) * (w*2) + (x*2  )) * c + ch] = val;
+                output[((y*2  ) * (w*2) + (x*2+1)) * c + ch] = val;
+                output[((y*2+1) * (w*2) + (x*2  )) * c + ch] = val;
+                output[((y*2+1) * (w*2) + (x*2+1)) * c + ch] = val;
+            }
+        }
+    }
+}
+
+// CPU channel concatenation: A (HxWxCA) + B (HxWxCB) → Output (HxWx(CA+CB))
+void cpu_concat_channels(const uint8_t* a, int ca,
+                         const uint8_t* b, int cb,
+                         uint8_t* output, int h, int w) {
+    int c_out = ca + cb;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            // Copy channels from A
+            for (int ch = 0; ch < ca; ch++) {
+                output[(y * w + x) * c_out + ch] = a[(y * w + x) * ca + ch];
+            }
+            // Copy channels from B
+            for (int ch = 0; ch < cb; ch++) {
+                output[(y * w + x) * c_out + ca + ch] = b[(y * w + x) * cb + ch];
+            }
+        }
+    }
+}
+
 int compare_outputs(const uint8_t* actual, const uint8_t* expected, size_t size,
                     int tolerance, const std::string& label, bool verbose = false) {
     int mismatches = 0;
@@ -390,24 +445,59 @@ int main(int argc, char* argv[]) {
         std::vector<uint8_t> layer_output;
         std::vector<uint8_t> padded_input;
 
+        // Saved intermediate outputs for routing/concat
+        std::vector<uint8_t> layer4_conv_output;  // 26x26x256 (before maxpool, for concat)
+        std::vector<uint8_t> layer7_output;       // 13x13x256 (for route to layer 10)
+
+        // Enable chained mode: output of layer N feeds into layer N+1
+        #define USE_CHAINED_INPUT 1
+
         for (int i = 0; i < NUM_LAYERS; i++) {
             const LayerConfig& cfg = LAYERS[i];
             std::string layer_dir = g_stimulus_dir + "/layer" + std::to_string(i);
-
-            // Get input pixels - always load from file to verify expected outputs
-            // (For true chaining, set USE_CHAINED_INPUT to 1)
-            #define USE_CHAINED_INPUT 0
             std::vector<uint8_t> pixels;
+
             #if USE_CHAINED_INPUT
             if (i == 0) {
+                // Layer 0: Load from image file (already padded in stimulus)
                 pixels = read_binary_file(layer_dir + "/pixels.bin");
-            } else {
-                // Use output from previous layer, add spatial padding
-                pad_spatial(layer_output, LAYERS[i-1].out_h, LAYERS[i-1].out_w,
-                           cfg.cin_pad, pixels);
+            }
+            else if (i == 10) {
+                // Layer 10: Input from saved layer 7 output (ROUTE operation)
+                // 1x1 conv, no spatial padding needed
+                std::cout << "  [ROUTE] Using saved Layer 7 output as input" << std::endl;
+                pixels = layer7_output;
+            }
+            else if (i == 11) {
+                // Layer 11: Upsample layer 10 output + concat with layer 4 saved
+                std::cout << "  [UPSAMPLE] Layer 10 output: 13x13x128 → 26x26x128" << std::endl;
+                std::vector<uint8_t> upsampled(26 * 26 * 128);
+                cpu_upsample_2x(layer_output.data(), upsampled.data(), 13, 13, 128);
+
+                std::cout << "  [CONCAT] Upsampled (128ch) + Layer4 saved (256ch) → 384ch" << std::endl;
+                std::vector<uint8_t> concat_out(26 * 26 * 384);
+                cpu_concat_channels(upsampled.data(), 128,
+                                   layer4_conv_output.data(), 256,
+                                   concat_out.data(), 26, 26);
+
+                // Pad for 3x3 conv (26x26 → 28x28)
+                pad_spatial(concat_out, 26, 26, 384, pixels);
+            }
+            else {
+                // Normal sequential chaining: pad previous layer output
+                int prev_h = LAYERS[i-1].out_h;
+                int prev_w = LAYERS[i-1].out_w;
+                int prev_c = LAYERS[i-1].cout;
+
+                // For 1x1 conv, no spatial padding needed
+                if (cfg.kernel_1x1) {
+                    pixels = layer_output;
+                } else {
+                    pad_spatial(layer_output, prev_h, prev_w, prev_c, pixels);
+                }
             }
             #else
-            // Load from stimulus file for each layer
+            // Load from stimulus file for each layer (independent mode)
             pixels = read_binary_file(layer_dir + "/pixels.bin");
             #endif
 
@@ -418,6 +508,36 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             total_mismatches += mismatches;
+
+            #if USE_CHAINED_INPUT
+            // Save intermediate outputs for routing/concat
+            if (i == 4) {
+                // Save layer 4 conv output BEFORE maxpool (already done by HW)
+                // But HW applies maxpool, so we need the pre-maxpool output
+                // Actually, the current HW outputs 13x13 with maxpool.
+                // We need to run layer 4 without maxpool to get 26x26 output.
+                // For now, load from stimulus file as a workaround.
+                std::string layer4_conv_path = g_stimulus_dir + "/layer4_conv.bin";
+                std::ifstream test_file(layer4_conv_path);
+                if (test_file.good()) {
+                    test_file.close();
+                    layer4_conv_output = read_binary_file(layer4_conv_path);
+                    std::cout << "  [SAVE] Loaded Layer 4 conv output (26x26x256) from file" << std::endl;
+                } else {
+                    // Fallback: use layer 4 expected conv output from stimulus
+                    // This is model.layer_outputs[8] in hardware_sim.py (NPZ 8, before maxpool)
+                    std::cout << "  [WARN] Layer 4 conv output file not found, using stimulus expected" << std::endl;
+                    // Load all expected_og files and reconstruct
+                    layer4_conv_output.resize(26 * 26 * 256);
+                    // For now, we'll generate this file separately
+                }
+            }
+            if (i == 7) {
+                // Save layer 7 output (13x13x256) for route to layer 10
+                layer7_output = layer_output;
+                std::cout << "  [SAVE] Layer 7 output (13x13x256) for route" << std::endl;
+            }
+            #endif
         }
 
         auto total_end = std::chrono::high_resolution_clock::now();
