@@ -76,15 +76,10 @@ python3 export_weights_for_cpu.py ../sim/hardware-ai/quantized_params.npz ./weig
 
 | Implementation | Inference Time | FPS | Speedup |
 |----------------|----------------|-----|---------|
-| ARM Cortex-A53 | 27,339 ms | 0.037 | 1x |
+| Naive ARM Cortex-A53 | 27,339 ms | 0.037 | 1x |
 | **FPGA Accelerator** | **99 ms** | **10.1** | **276x** |
 
 ## Documentation
 
 - [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md) - Comprehensive design report with benchmarks
 - [architecture.md](architecture.md) - Detailed hardware architecture
-- [docs/hardware_vs_hwsim_analysis.md](docs/hardware_vs_hwsim_analysis.md) - Verification analysis
-
-## License
-
-Academic project - Xilinx/AMD tools required for synthesis.
