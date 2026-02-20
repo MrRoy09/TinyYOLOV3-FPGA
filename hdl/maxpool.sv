@@ -39,9 +39,24 @@ always_ff @(posedge clk) begin
     end
 end
 
+// ════════════════════════════════════════════════════════════════════════════
+// Stride-1 Padding Injection: Replace padding positions with -128
+// For stride-1 maxpool, host pads conv input to produce (H+1)x(W+1) output.
+// The extra row/column is padding. We inject -128 so it never wins the max.
+// ════════════════════════════════════════════════════════════════════════════
+localparam [63:0] PAD_VALUE = 64'h8080808080808080;  // -128 for all 8 channels
+
 logic [12:0] ch_cnt;
 logic [15:0] col_cnt;
 logic [15:0] row_cnt;
+
+// Detect padding positions for stride-1 (assume square: img_height = img_width)
+wire is_padding_col = (col_cnt == img_width_r - 1);
+wire is_padding_row = (row_cnt == img_width_r - 1);
+wire is_padding = !stride_2_r && (is_padding_col || is_padding_row);
+
+// Effective data_in: replace with PAD_VALUE at padding positions
+wire [63:0] data_in_eff = is_padding ? PAD_VALUE : data_in;
 
 logic [63:0] prev_col;
 logic [63:0] h_max;
@@ -60,6 +75,7 @@ logic [15:0] col_q, row_q;
 logic [63:0] h_max_for_vmax;
 logic lb_en_q;
 logic [15:0] row_at_lben;
+logic [15:0] col_at_lben;  // Track column position for stride-1 col 0 skip
 
 // ── Input position counters (use registered configs) ──
 always_ff @(posedge clk) begin
@@ -100,7 +116,8 @@ always_ff @(posedge clk) begin
 end
 
 // ── Horizontal max (combinatorial) ──
-assign h_max = vec_max(prev_col, data_in);
+// Uses data_in_eff to inject -128 at padding positions for stride-1
+assign h_max = vec_max(prev_col, data_in_eff);
 
 // ── lb_en: triggers LB write and h_max_for_vmax capture ──
 // Use registered stride_2_r for timing closure.
@@ -109,17 +126,19 @@ assign lb_en = v_in_q && (stride_2_r ? col_q[0] : 1'b1);
 // ── Stage 2: capture h_max_latched at lb_en, delay lb_en by 1 ──
 // When lb_en fires, h_max_latched is still valid (set at odd col,
 // lb_en fires 1 cycle later at even col, so h_max_latched hasn't changed).
-// Also capture row_q for the valid_out check.
+// Also capture row_q and col_q for the valid_out check.
 always_ff @(posedge clk) begin
     if (rst) begin
         h_max_for_vmax <= '0;
         lb_en_q <= 0;
         row_at_lben <= 0;
+        col_at_lben <= 0;
     end else begin
         lb_en_q <= lb_en;
         if (lb_en) begin
             h_max_for_vmax <= h_max_latched;
             row_at_lben <= row_q;
+            col_at_lben <= col_q;  // Capture column position at lb_en time
         end
     end
 end
@@ -129,8 +148,11 @@ end
 assign v_max = vec_max(h_max_for_vmax, prev_row);
 
 // ── Output register ──
-// valid_out fires 1 cycle after lb_en (= lb_en_q), gated by row parity.
+// valid_out fires 1 cycle after lb_en (= lb_en_q), gated by row/col conditions.
 // Use registered stride_2_r for timing closure.
+// For stride-2: output at odd rows only (row_at_lben[0])
+// For stride-1 with padded input: skip row 0 AND col 0
+//   (backward-looking output at [R][C] maps to forward-looking at [R-1][C-1])
 always_ff @(posedge clk) begin
     if(rst) begin
         data_out <= 0;
@@ -140,7 +162,7 @@ always_ff @(posedge clk) begin
         if(stride_2_r)
             valid_out <= lb_en_q && row_at_lben[0];
         else
-            valid_out <= lb_en_q && (row_at_lben > 0);
+            valid_out <= lb_en_q && (row_at_lben > 0) && (col_at_lben > 0);
     end
 end
 
@@ -170,11 +192,13 @@ always_ff @(posedge clk) begin
     end else if (valid_in) begin
         if (ch_limit_r <= 8'd1) begin
             // Direct 1-cycle delay (bypass circular buffer)
-            prev_col <= data_in;
+            // Uses data_in_eff for stride-1 padding injection
+            prev_col <= data_in_eff;
         end else begin
             // Circular buffer: ch_limit-1 entries + 1 output reg = ch_limit total
+            // Uses data_in_eff for stride-1 padding injection
             prev_col             <= col_buf[col_buf_ptr];
-            col_buf[col_buf_ptr] <= data_in;
+            col_buf[col_buf_ptr] <= data_in_eff;
             if (col_buf_ptr >= ch_limit_r - 2)
                 col_buf_ptr <= '0;
             else

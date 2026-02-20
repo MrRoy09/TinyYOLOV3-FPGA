@@ -39,7 +39,7 @@ test_inference: test_inference.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $< $(LDFLAGS) $(LDLIBS)
 
 yolo_inference: yolo_inference.cpp stb_image.h yolo_postprocess.hpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $< $(LDFLAGS) $(LDLIBS)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) `pkg-config --cflags opencv4` -o $@ $< $(LDFLAGS) $(LDLIBS) `pkg-config --libs opencv4`
 
 clean:
 	rm -f $(TARGETS)

@@ -1,0 +1,4 @@
+# Stride-1 maxpool test using Layer 0 params
+M=0x000000C0
+n=16
+# Test: 7x7 padded input -> 5x5 conv -> 4x4 maxpool

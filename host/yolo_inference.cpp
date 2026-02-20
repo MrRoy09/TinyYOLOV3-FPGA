@@ -19,6 +19,11 @@
 #include <cmath>
 #include <sstream>
 
+// OpenCV for fast image preprocessing (NEON-accelerated on ARM)
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 #include "xrt/xrt_bo.h"
@@ -74,63 +79,44 @@ std::vector<uint8_t> read_binary_file(const std::string& path) {
 }
 
 // Load and preprocess image to 416x416 INT8 NHWC format with padding
+// Uses OpenCV for fast NEON-accelerated resize
 std::vector<uint8_t> load_and_preprocess_image(const std::string& path, int target_size = 416) {
-    int width, height, channels;
-    unsigned char* img = stbi_load(path.c_str(), &width, &height, &channels, 3);
-    if (!img) {
+    // Load image with OpenCV (BGR format)
+    cv::Mat img = cv::imread(path, cv::IMREAD_COLOR);
+    if (img.empty()) {
         throw std::runtime_error("Cannot load image: " + path);
     }
 
-    std::cout << "Loaded image: " << width << "x" << height << "x" << channels << std::endl;
+    std::cout << "Loaded image: " << img.cols << "x" << img.rows << "x" << img.channels() << std::endl;
 
-    // Resize to target_size x target_size using simple bilinear interpolation
-    std::vector<float> resized(target_size * target_size * 3);
-    float x_ratio = static_cast<float>(width) / target_size;
-    float y_ratio = static_cast<float>(height) / target_size;
+    // Resize using OpenCV (NEON-accelerated on ARM)
+    cv::Mat resized;
+    cv::resize(img, resized, cv::Size(target_size, target_size), 0, 0, cv::INTER_LINEAR);
 
-    for (int y = 0; y < target_size; y++) {
-        for (int x = 0; x < target_size; x++) {
-            float src_x = x * x_ratio;
-            float src_y = y * y_ratio;
-            int x0 = static_cast<int>(src_x);
-            int y0 = static_cast<int>(src_y);
-            int x1 = std::min(x0 + 1, width - 1);
-            int y1 = std::min(y0 + 1, height - 1);
-            float x_frac = src_x - x0;
-            float y_frac = src_y - y0;
-
-            for (int c = 0; c < 3; c++) {
-                float v00 = img[(y0 * width + x0) * 3 + c];
-                float v01 = img[(y0 * width + x1) * 3 + c];
-                float v10 = img[(y1 * width + x0) * 3 + c];
-                float v11 = img[(y1 * width + x1) * 3 + c];
-
-                float v0 = v00 * (1 - x_frac) + v01 * x_frac;
-                float v1 = v10 * (1 - x_frac) + v11 * x_frac;
-                float v = v0 * (1 - y_frac) + v1 * y_frac;
-
-                // BGR to RGB swap (YOLO expects RGB)
-                int dst_c = (c == 0) ? 2 : (c == 2) ? 0 : c;
-                resized[(y * target_size + x) * 3 + dst_c] = v;
-            }
-        }
-    }
-    stbi_image_free(img);
+    // Convert BGR to RGB
+    cv::Mat rgb;
+    cv::cvtColor(resized, rgb, cv::COLOR_BGR2RGB);
 
     // Normalize to [0, 1] and quantize to INT8 with scale=127
+    // Optimized: use integer math instead of float (val * 127 / 255 ≈ val / 2)
+    // More precise: (val * 127 + 127) / 255 with rounding
     // Output format: NHWC with 1-pixel zero padding (418x418x8)
     int padded_size = target_size + 2;
     int cin_pad = 8;  // Pad channels from 3 to 8
     std::vector<uint8_t> output(padded_size * padded_size * cin_pad, 0);
 
     for (int y = 0; y < target_size; y++) {
+        const uint8_t* row = rgb.ptr<uint8_t>(y);
+        uint8_t* dst_row = output.data() + ((y + 1) * padded_size + 1) * cin_pad;
         for (int x = 0; x < target_size; x++) {
-            for (int c = 0; c < 3; c++) {
-                float val = resized[(y * target_size + x) * 3 + c] / 255.0f;
-                int8_t qval = static_cast<int8_t>(std::round(val * 127.0f));
-                int dst_idx = ((y + 1) * padded_size + (x + 1)) * cin_pad + c;
-                output[dst_idx] = static_cast<uint8_t>(qval);
-            }
+            // Integer quantization: (pixel * 127 + 127) / 255
+            // Approximation: (pixel + 1) >> 1 is close to pixel * 127 / 255
+            dst_row[0] = (row[0] + 1) >> 1;  // R
+            dst_row[1] = (row[1] + 1) >> 1;  // G
+            dst_row[2] = (row[2] + 1) >> 1;  // B
+            // Channels 3-7 stay zero (already initialized)
+            row += 3;
+            dst_row += cin_pad;
         }
     }
 
@@ -141,6 +127,30 @@ void pad_spatial(const std::vector<uint8_t>& input, int h, int w, int c,
                  std::vector<uint8_t>& output) {
     int padded_h = h + 2;
     int padded_w = w + 2;
+    output.resize(padded_h * padded_w * c, 0);
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            for (int ch = 0; ch < c; ch++) {
+                int src_idx = (y * w + x) * c + ch;
+                int dst_idx = ((y + 1) * padded_w + (x + 1)) * c + ch;
+                output[dst_idx] = input[src_idx];
+            }
+        }
+    }
+}
+
+// Pad spatial dimensions for stride-1 maxpool
+// The RTL uses backward-looking maxpool: output[r][c] = max(input[r-1:r+1, c-1:c+1])
+// It skips row 0 and col 0, and replaces the last row/col with -128.
+// So for HxH final output, we need (H+1)x(H+1) conv output.
+// For 3x3 conv to produce (H+1)x(H+1), we need (H+3)x(H+3) padded input.
+void pad_spatial_stride1(const std::vector<uint8_t>& input, int h, int w, int c,
+                         std::vector<uint8_t>& output) {
+    // For stride-1 maxpool:
+    // - Pad to (H+3)x(W+3) for conv to produce (H+1)x(W+1)
+    // - Maxpool skips row 0/col 0, producing HxH output
+    int padded_h = h + 3;
+    int padded_w = w + 3;
     output.resize(padded_h * padded_w * c, 0);
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
@@ -298,15 +308,25 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
                const std::vector<uint8_t>& pixels, std::vector<uint8_t>& layer_output,
                int layer_idx, InferenceBuffers& bufs, PreloadedWeights& pw) {
 
-    bool use_cpu_maxpool = (cfg.maxpool_stride == 1);
-    int hw_out_h = use_cpu_maxpool ? cfg.img_h : cfg.out_h;
-    int hw_out_w = use_cpu_maxpool ? cfg.img_w : cfg.out_w;
+    // HW maxpool for both stride-1 and stride-2
+    // For stride-1: input is padded to (H+3)x(W+3), conv produces (H+1)x(W+1), maxpool outputs HxH
+    // For stride-2: input is padded normally, maxpool outputs H/2 x W/2
+    // bool use_cpu_maxpool = (cfg.maxpool_stride == 1);  // DISABLED: now using HW maxpool
+    bool use_cpu_maxpool = false;  // HW maxpool for all strides
 
-    size_t pixel_bytes = cfg.padded_h * cfg.padded_w * cfg.cin_pad;
-    size_t hw_output_bytes_per_og = hw_out_h * hw_out_w * 8;
+    // For stride-1: conv produces (H+1)x(W+1) from (H+3)x(W+3) input
+    int hw_out_h = (cfg.maxpool_stride == 1) ? (cfg.out_h + 1) : cfg.out_h;
+    int hw_out_w = (cfg.maxpool_stride == 1) ? (cfg.out_w + 1) : cfg.out_w;
+
+    // Actual padded size for stride-1
+    int actual_padded_h = (cfg.maxpool_stride == 1) ? (cfg.out_h + 3) : cfg.padded_h;
+    int actual_padded_w = (cfg.maxpool_stride == 1) ? (cfg.out_w + 3) : cfg.padded_w;
+
+    size_t pixel_bytes = actual_padded_h * actual_padded_w * cfg.cin_pad;
+    size_t hw_output_bytes_per_og = cfg.out_h * cfg.out_w * 8;  // Final output after maxpool
     size_t final_output_bytes_per_og = cfg.out_h * cfg.out_w * 8;
 
-    std::vector<uint8_t> cpu_maxpool_out;
+    std::vector<uint8_t> cpu_maxpool_out;  // Kept for potential fallback
 
     // Use pre-allocated buffers
     auto dma_start = std::chrono::high_resolution_clock::now();
@@ -354,9 +374,11 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         run.set_arg(9, static_cast<uint32_t>(0));
         run.set_arg(10, static_cast<uint32_t>(0));
         run.set_arg(11, static_cast<uint32_t>(cfg.cin_pad));
-        run.set_arg(12, static_cast<uint32_t>(cfg.padded_w));
-        run.set_arg(13, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0));
-        run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0));
+        run.set_arg(12, static_cast<uint32_t>(actual_padded_w));  // Use actual padded width for stride-1
+        // Maxpool config: stride-1 and stride-2 both in HW, 0=disabled
+        bool enable_hw_maxpool = (cfg.maxpool_stride != 0);
+        run.set_arg(13, static_cast<uint32_t>(enable_hw_maxpool ? 1 : 0));  // use_maxpool
+        run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0));  // stride_2 (0 for stride-1)
         run.set_arg(15, cfg.quant_m);
         run.set_arg(16, cfg.quant_n);
         run.set_arg(17, static_cast<uint32_t>(cfg.use_relu));
@@ -387,11 +409,13 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         }
 
         const uint8_t* final_output_ptr = bufs.output_ptr;
-        if (use_cpu_maxpool) {
-            cpu_maxpool_out.resize(final_output_bytes_per_og);
-            cpu_maxpool_stride1(bufs.output_ptr, cpu_maxpool_out.data(), hw_out_h, hw_out_w, 8);
-            final_output_ptr = cpu_maxpool_out.data();
-        }
+        // CPU maxpool fallback - DISABLED, now using HW maxpool for stride-1
+        // Uncomment below to revert to CPU maxpool for stride-1:
+        // if (use_cpu_maxpool) {
+        //     cpu_maxpool_out.resize(final_output_bytes_per_og);
+        //     cpu_maxpool_stride1(bufs.output_ptr, cpu_maxpool_out.data(), hw_out_h, hw_out_w, 8);
+        //     final_output_ptr = cpu_maxpool_out.data();
+        // }
 
         auto copy_start = std::chrono::high_resolution_clock::now();
         int valid_channels = std::min(8, cfg.cout - og * 8);
@@ -506,6 +530,9 @@ int main(int argc, char* argv[]) {
                 int prev_c = LAYERS[i-1].cout;
                 if (cfg.kernel_1x1) {
                     pixels = layer_output;
+                } else if (cfg.maxpool_stride == 1) {
+                    // Stride-1 maxpool: pad to (H+3)x(W+3) for HW maxpool
+                    pad_spatial_stride1(layer_output, prev_h, prev_w, prev_c, pixels);
                 } else {
                     pad_spatial(layer_output, prev_h, prev_w, prev_c, pixels);
                 }

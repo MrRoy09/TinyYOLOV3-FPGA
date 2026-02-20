@@ -53,15 +53,17 @@ LAYER_CONFIGS = {
         'stim_dir': 'stimulus_l3',
         'desc': '64->128, 4x4->2x2'
     },
-    # Layer 5: stride-1 maxpool (same output size as conv output)
+    # Layer 5: stride-1 maxpool test using Layer 0 params
+    # For stride-1 with backward-looking RTL (skip row 0/col 0):
+    # - 7x7 padded input -> 5x5 conv output -> 4x4 maxpool output
     5: {
-        'ci_groups': 32, 'co_groups': 64,
-        'cin_pad': 256, 'img_w': 6,  # Small test: 4x4 + pad = 6x6
-        'quant_m': 0x173, 'quant_n': 16,
-        'out_h': 4, 'out_w': 4,  # stride-1 maxpool: conv_out - 1 = 4
+        'ci_groups': 1, 'co_groups': 2,
+        'cin_pad': 8, 'img_w': 7,  # 5x5 + 2 padding = 7x7
+        'quant_m': 0xC0, 'quant_n': 16,
+        'out_h': 4, 'out_w': 4,  # stride-1 maxpool: 5x5 -> 4x4
         'use_stride2': 0,  # STRIDE-1 MAXPOOL
         'stim_dir': 'stimulus_l5',
-        'desc': '256->512, stride-1 maxpool test'
+        'desc': '3->16, stride-1 maxpool test'
     },
 }
 

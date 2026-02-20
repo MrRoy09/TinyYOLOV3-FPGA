@@ -17,9 +17,13 @@ echo "========================================"
 echo "TinyYOLOV3 AXI Testbench Runner"
 echo "========================================"
 
-# Step 1: Generate/update stimulus files
-echo "Step 1: Generating stimulus files..."
-python3 "$SCRIPT_DIR/gen_axi_stimulus.py"
+# Step 1: Verify stimulus files exist (configure_axi_tb.py already copies them)
+echo "Step 1: Verifying stimulus files..."
+if [ ! -f "$IMPORTS_DIR/pixels_og0.hex" ]; then
+    echo "ERROR: Stimulus files not found. Run configure_axi_tb.py <layer_num> first!"
+    exit 1
+fi
+echo "  Stimulus files present"
 
 # Step 2: Copy hex files to xsim directory
 echo "Step 2: Copying hex files to simulation directory..."

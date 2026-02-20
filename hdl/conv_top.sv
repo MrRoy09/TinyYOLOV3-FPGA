@@ -215,24 +215,53 @@ logic        maxpool_valid_out;
 
 (* max_fanout = 32 *) logic [15:0] maxpool_img_width_r;
 (* max_fanout = 32 *) logic        maxpool_stride_2_r;
+(* max_fanout = 32 *) logic [15:0] conv_out_width_r;
 
 always_ff @(posedge clk) begin
     if (rst) begin
         maxpool_img_width_r <= '0;
         maxpool_stride_2_r  <= '0;
+        conv_out_width_r    <= '0;
     end else begin
-        maxpool_img_width_r <= cfg_kernel_1x1 ? cfg_img_width : (cfg_img_width - 16'd2);
+        // Conv output width: input_width - 2 for 3x3 kernel, input_width for 1x1
+        conv_out_width_r <= cfg_kernel_1x1 ? cfg_img_width : (cfg_img_width - 16'd2);
+        // Maxpool img_width = conv output width
+        // For stride-1: host pads CONV input to produce (H+1)x(W+1) conv output
+        // Maxpool skips row 0/col 0, producing HxH output
+        // For stride-2: conv output is HxW, maxpool produces (H/2)x(W/2)
+        maxpool_img_width_r <= conv_out_width_r;
         maxpool_stride_2_r  <= cfg_stride_2;
     end
 end
 
+// ═══════════════════════════════════════════════════════════════════════════
+// STRIDE-1 MAXPOOL PADDING INSERTION
+// For stride-1, the backward-looking algorithm needs padded input to match
+// Python's forward-looking with bottom-right padding.
+// We insert: 1 PAD pixel after each row, and (W+1) PAD pixels after last row.
+// This converts HxW to (H+1)x(W+1). Maxpool skips row 0 and col 0, outputting HxW.
+//
+// Simple approach: For stride-1, directly pass data to maxpool.
+// The CPU host will pad the CONV INPUT instead, so conv produces (H+1)x(W+1) output.
+// This shifts the padding responsibility to the host layer configuration.
+// ═══════════════════════════════════════════════════════════════════════════
+
+logic [63:0] mp_data_in;
+logic        mp_valid_in;
+
+// For stride-1: Direct pass-through. Host is responsible for input padding.
+// For stride-2: Direct pass-through as before.
+assign mp_data_in  = quant_packed;
+assign mp_valid_in = quant_valid;
+
 maxPool u_maxpool (
     .clk       (clk),
-    .rst       (rst),      .img_width (maxpool_img_width_r),
+    .rst       (rst),
+    .img_width (maxpool_img_width_r),
     .channels  (16'd8),
     .stride_2  (maxpool_stride_2_r),
-    .data_in   (quant_packed),
-    .valid_in  (quant_valid),
+    .data_in   (mp_data_in),
+    .valid_in  (mp_valid_in),
     .data_out  (maxpool_data_out),
     .valid_out (maxpool_valid_out)
 );

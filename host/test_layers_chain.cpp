@@ -101,29 +101,28 @@ void pad_spatial(const std::vector<uint8_t>& input, int h, int w, int c,
     }
 }
 
-// CPU stride-1 maxpool matching hardware_sim.py golden model
-// Pads right and bottom with -128, maintains spatial size
-void cpu_maxpool_stride1(const uint8_t* input, uint8_t* output, int h, int w, int c) {
-    // For each output position, compute 2x2 max
-    // Edge handling: treat out-of-bounds as -128
+// Pad spatial dimensions for stride-1 maxpool
+// The RTL uses backward-looking maxpool: output[r][c] = max(input[r-1:r+1, c-1:c+1])
+// Python golden uses forward-looking: output[r][c] = max(input[r:r+2, c:c+2]) with padding
+// To match: RTL skips row 0/col 0, so we pad conv input to produce (H+1)x(W+1) conv output
+// Then maxpool outputs HxH which matches Python forward-looking on HxH input
+void pad_spatial_stride1(const std::vector<uint8_t>& input, int h, int w, int c,
+                         std::vector<uint8_t>& output) {
+    // For stride-1 maxpool:
+    // - Pad input to (H+3)x(W+3): +1 for extra row/col, +2 for 3x3 conv padding
+    // - Conv produces (H+1)x(W+1) output
+    // - Maxpool skips row 0/col 0, producing HxH output
+    int padded_h = h + 3;
+    int padded_w = w + 3;
+    output.resize(padded_h * padded_w * c, 0);
+
+    // Copy input to center (offset by 1 for conv padding)
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             for (int ch = 0; ch < c; ch++) {
-                int8_t vals[4];
-
-                // Get 2x2 window values, -128 for out-of-bounds
-                vals[0] = static_cast<int8_t>(input[(y * w + x) * c + ch]);
-                vals[1] = (x + 1 < w) ? static_cast<int8_t>(input[(y * w + x + 1) * c + ch]) : -128;
-                vals[2] = (y + 1 < h) ? static_cast<int8_t>(input[((y + 1) * w + x) * c + ch]) : -128;
-                vals[3] = (x + 1 < w && y + 1 < h) ? static_cast<int8_t>(input[((y + 1) * w + x + 1) * c + ch]) : -128;
-
-                // Find max
-                int8_t max_val = vals[0];
-                for (int i = 1; i < 4; i++) {
-                    if (vals[i] > max_val) max_val = vals[i];
-                }
-
-                output[(y * w + x) * c + ch] = static_cast<uint8_t>(max_val);
+                int src_idx = (y * w + x) * c + ch;
+                int dst_idx = ((y + 1) * padded_w + (x + 1)) * c + ch;
+                output[dst_idx] = input[src_idx];
             }
         }
     }
@@ -242,32 +241,32 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
 
     // Maxpool handling:
     // - stride=0: no maxpool, HW output = cfg.out_h
-    // - stride=1: CPU maxpool, HW outputs cfg.img_h, then CPU reduces to cfg.out_h
-    // - stride=2: HW maxpool, HW output = cfg.out_h
-    bool use_cpu_maxpool = (cfg.maxpool_stride == 1);
-    int hw_out_h = use_cpu_maxpool ? cfg.img_h : cfg.out_h;
-    int hw_out_w = use_cpu_maxpool ? cfg.img_w : cfg.out_w;
+    // - stride=1: HW maxpool with backward-looking (skip row 0/col 0)
+    //   Input must be padded to produce (H+1)x(W+1) conv output
+    // - stride=2: HW maxpool, output = input/2
+    // All maxpool now runs in hardware!
+    int hw_out_h = cfg.out_h;
+    int hw_out_w = cfg.out_w;
 
-    if (use_cpu_maxpool) {
-        std::cout << "  NOTE: CPU stride-1 maxpool (HW outputs " << hw_out_h << "x" << hw_out_w << ")" << std::endl;
+    if (cfg.maxpool_stride == 1) {
+        std::cout << "  NOTE: HW stride-1 maxpool (conv produces " << (cfg.out_h + 1) << "x" << (cfg.out_w + 1) << ")" << std::endl;
     } else if (cfg.maxpool_stride == 0) {
         std::cout << "  NOTE: No maxpool (conv only)" << std::endl;
     }
 
     // Calculate sizes
-    size_t pixel_bytes = cfg.padded_h * cfg.padded_w * cfg.cin_pad;
-    size_t hw_output_bytes_per_og = hw_out_h * hw_out_w * 8;  // HW output (conv for stride-1)
-    size_t final_output_bytes_per_og = cfg.out_h * cfg.out_w * 8;  // Final output (after CPU maxpool if needed)
+    // For stride-1: input is padded to (H+1+2)x(W+1+2) to produce (H+1)x(W+1) conv output
+    int actual_padded_h = (cfg.maxpool_stride == 1) ? (cfg.out_h + 3) : cfg.padded_h;
+    int actual_padded_w = (cfg.maxpool_stride == 1) ? (cfg.out_w + 3) : cfg.padded_w;
+    size_t pixel_bytes = actual_padded_h * actual_padded_w * cfg.cin_pad;
+    size_t output_bytes_per_og = hw_out_h * hw_out_w * 8;  // HW output (final for all cases)
     size_t weight_bytes_per_og = cfg.ci_groups * 8 * 8 * 16;  // ci_groups * 8 banks * 8 urams * 16 bytes
 
     // Allocate device buffers
     size_t weight_buf_size = ((weight_bytes_per_og + 4095) / 4096) * 4096;
     size_t bias_buf_size = 4096;
     size_t pixel_buf_size = ((pixel_bytes + 4095) / 4096) * 4096;
-    size_t output_buf_size = ((hw_output_bytes_per_og + 4095) / 4096) * 4096;
-
-    // Temp buffer for CPU maxpool
-    std::vector<uint8_t> cpu_maxpool_out;
+    size_t output_buf_size = ((output_bytes_per_og + 4095) / 4096) * 4096;
 
     xrt::bo weight_bo(device, weight_buf_size, kernel.group_id(19));
     xrt::bo bias_bo(device, bias_buf_size, kernel.group_id(20));
@@ -321,18 +320,18 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         run.set_arg(4, static_cast<uint32_t>(weights.size()));
         run.set_arg(5, static_cast<uint32_t>(biases.size()));
         run.set_arg(6, static_cast<uint32_t>(pixel_bytes));
-        run.set_arg(7, static_cast<uint32_t>(hw_output_bytes_per_og));  // HW output size
+        run.set_arg(7, static_cast<uint32_t>(output_bytes_per_og));  // HW output size
 
         run.set_arg(8, static_cast<uint32_t>(cfg.ci_groups));
         run.set_arg(9, static_cast<uint32_t>(0));  // CRITICAL: Must be 0 for per-OG bias loading
         run.set_arg(10, static_cast<uint32_t>(0)); // wt_base_addr
         run.set_arg(11, static_cast<uint32_t>(cfg.cin_pad));
-        run.set_arg(12, static_cast<uint32_t>(cfg.padded_w));
+        run.set_arg(12, static_cast<uint32_t>(actual_padded_w));
 
-        // Maxpool config: stride-1 done on CPU, stride-2 in HW, 0=disabled
-        bool enable_hw_maxpool = (cfg.maxpool_stride == 2);
+        // Maxpool config: stride-1 and stride-2 both in HW, 0=disabled
+        bool enable_hw_maxpool = (cfg.maxpool_stride != 0);
         run.set_arg(13, static_cast<uint32_t>(enable_hw_maxpool ? 1 : 0)); // use_maxpool
-        run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0)); // stride_2
+        run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0)); // stride_2 (0 for stride-1)
         run.set_arg(15, cfg.quant_m);
         run.set_arg(16, cfg.quant_n);
         run.set_arg(17, static_cast<uint32_t>(cfg.use_relu));     // use_relu from config
@@ -355,13 +354,8 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         // Read output
         output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-        // For stride-1: apply CPU maxpool to match golden model
+        // HW produces final output directly (maxpool done in HW for all strides)
         const uint8_t* final_output_ptr = output_ptr;
-        if (use_cpu_maxpool) {
-            cpu_maxpool_out.resize(final_output_bytes_per_og);
-            cpu_maxpool_stride1(output_ptr, cpu_maxpool_out.data(), hw_out_h, hw_out_w, 8);
-            final_output_ptr = cpu_maxpool_out.data();
-        }
 
         // Store in layer output (interleaved by output group)
         // Handle 255 output channels: last OG has only 7 valid channels
@@ -383,7 +377,7 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         // Enable verbose for Layer 0 (first 2 OGs) to debug mismatches
         bool verbose_debug = (cfg.hw_layer == 0 && og <= 1);
         int mismatches = compare_outputs(final_output_ptr, expected.data(),
-                                        final_output_bytes_per_og, 3,
+                                        output_bytes_per_og, 3,
                                         "  OG" + std::to_string(og), verbose_debug);
 
         // Print first 16 bytes for debugging Layer 0 OG0
@@ -492,7 +486,11 @@ int main(int argc, char* argv[]) {
                 // For 1x1 conv, no spatial padding needed
                 if (cfg.kernel_1x1) {
                     pixels = layer_output;
+                } else if (cfg.maxpool_stride == 1) {
+                    // Stride-1 maxpool: pad to (H+3)x(W+3) for (H+1)x(W+1) conv output
+                    pad_spatial_stride1(layer_output, prev_h, prev_w, prev_c, pixels);
                 } else {
+                    // Normal 3x3 conv padding: (H+2)x(W+2)
                     pad_spatial(layer_output, prev_h, prev_w, prev_c, pixels);
                 }
             }
