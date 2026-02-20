@@ -24,6 +24,11 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
+// NEON intrinsics for fast interleaving on ARM
+#ifdef __ARM_NEON
+#include <arm_neon.h>
+#endif
+
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 #include "xrt/xrt_bo.h"
@@ -33,6 +38,60 @@
 #include "stb_image.h"
 
 #include "yolo_postprocess.hpp"
+
+// ============================================================================
+// NEON-optimized batch interleave for OG outputs
+// Converts from [OG0: all pixels][OG1: all pixels]... to NHWC [pixel: all channels]
+// ============================================================================
+void neon_batch_interleave(const std::vector<std::vector<uint8_t>>& og_outputs,
+                           uint8_t* dst, int num_pixels, int num_ogs, int cout) {
+#ifdef __ARM_NEON
+    if (num_ogs == 2 && cout == 16) {
+        // Special case: 2 OGs, 16 channels - simple NEON load/store
+        const uint8_t* src0 = og_outputs[0].data();
+        const uint8_t* src1 = og_outputs[1].data();
+        for (int p = 0; p < num_pixels; p++) {
+            // Load 8 bytes from each OG, store interleaved (16 bytes per pixel)
+            vst1_u8(dst + p * 16, vld1_u8(src0 + p * 8));
+            vst1_u8(dst + p * 16 + 8, vld1_u8(src1 + p * 8));
+        }
+    } else if (num_ogs == 4 && cout == 32) {
+        // 4 OGs, 32 channels
+        const uint8_t* src0 = og_outputs[0].data();
+        const uint8_t* src1 = og_outputs[1].data();
+        const uint8_t* src2 = og_outputs[2].data();
+        const uint8_t* src3 = og_outputs[3].data();
+        for (int p = 0; p < num_pixels; p++) {
+            vst1_u8(dst + p * 32, vld1_u8(src0 + p * 8));
+            vst1_u8(dst + p * 32 + 8, vld1_u8(src1 + p * 8));
+            vst1_u8(dst + p * 32 + 16, vld1_u8(src2 + p * 8));
+            vst1_u8(dst + p * 32 + 24, vld1_u8(src3 + p * 8));
+        }
+    } else {
+        // General case: sequential NEON loads/stores
+        for (int p = 0; p < num_pixels; p++) {
+            uint8_t* pixel_dst = dst + p * cout;
+            for (int og = 0; og < num_ogs; og++) {
+                int valid_ch = std::min(8, cout - og * 8);
+                if (valid_ch == 8) {
+                    vst1_u8(pixel_dst + og * 8, vld1_u8(og_outputs[og].data() + p * 8));
+                } else {
+                    std::memcpy(pixel_dst + og * 8, og_outputs[og].data() + p * 8, valid_ch);
+                }
+            }
+        }
+    }
+#else
+    // Fallback for non-ARM: simple copy
+    for (int p = 0; p < num_pixels; p++) {
+        uint8_t* pixel_dst = dst + p * cout;
+        for (int og = 0; og < num_ogs; og++) {
+            int valid_ch = std::min(8, cout - og * 8);
+            std::memcpy(pixel_dst + og * 8, og_outputs[og].data() + p * 8, valid_ch);
+        }
+    }
+#endif
+}
 
 struct LayerConfig {
     int hw_layer;
@@ -341,6 +400,10 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
 
     layer_output.resize(cfg.out_h * cfg.out_w * cfg.cout);
 
+    // Storage for OG outputs (for batch interleaving at the end)
+    std::vector<std::vector<uint8_t>> og_outputs(cfg.co_groups);
+    int num_pixels = cfg.out_h * cfg.out_w;
+
     for (int og = 0; og < cfg.co_groups; og++) {
         auto og_start = std::chrono::high_resolution_clock::now();
 
@@ -417,37 +480,33 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         //     final_output_ptr = cpu_maxpool_out.data();
         // }
 
+        // Store OG output for batch interleaving later (fast sequential copy)
         auto copy_start = std::chrono::high_resolution_clock::now();
-        int valid_channels = std::min(8, cfg.cout - og * 8);
-        int pixels = cfg.out_h * cfg.out_w;
-
-        // Ultra-fast copy using 64-bit moves for 8 channels
-        if (cfg.cout == 8) {
-            // Single OG: direct bulk copy
-            std::memcpy(layer_output.data(), final_output_ptr, pixels * 8);
-        } else if (valid_channels == 8) {
-            // Full 8 channels per OG: use 64-bit copy
-            const uint64_t* src = reinterpret_cast<const uint64_t*>(final_output_ptr);
-            uint8_t* dst_base = layer_output.data() + og * 8;
-            for (int p = 0; p < pixels; p++) {
-                *reinterpret_cast<uint64_t*>(dst_base + p * cfg.cout) = src[p];
-            }
-        } else {
-            // Partial channels (last OG with cout not multiple of 8)
-            const uint8_t* src = final_output_ptr;
-            uint8_t* dst_base = layer_output.data() + og * 8;
-            for (int p = 0; p < pixels; p++) {
-                std::memcpy(dst_base + p * cfg.cout, src + p * 8, valid_channels);
-            }
-        }
+        og_outputs[og].resize(num_pixels * 8);
+        std::memcpy(og_outputs[og].data(), final_output_ptr, num_pixels * 8);
         auto copy_end = std::chrono::high_resolution_clock::now();
 
         if (layer_idx == 0 && og == 0) {
             auto copy_us = std::chrono::duration_cast<std::chrono::microseconds>(copy_end - copy_start).count();
             auto og_us = std::chrono::duration_cast<std::chrono::microseconds>(copy_end - og_start).count();
-            std::cout << "  L0 OG0: output_copy=" << (copy_us/1000.0) << "ms" << std::endl;
+            std::cout << "  L0 OG0: og_copy=" << (copy_us/1000.0) << "ms" << std::endl;
             std::cout << "  L0 OG0: TOTAL=" << (og_us/1000.0) << "ms" << std::endl;
         }
+    }
+
+    // Batch interleave all OG outputs into NHWC format using NEON
+    auto interleave_start = std::chrono::high_resolution_clock::now();
+    if (cfg.cout == 8) {
+        // Single OG: direct copy, no interleaving needed
+        std::memcpy(layer_output.data(), og_outputs[0].data(), num_pixels * 8);
+    } else {
+        neon_batch_interleave(og_outputs, layer_output.data(), num_pixels, cfg.co_groups, cfg.cout);
+    }
+    auto interleave_end = std::chrono::high_resolution_clock::now();
+
+    if (layer_idx == 0) {
+        auto interleave_us = std::chrono::duration_cast<std::chrono::microseconds>(interleave_end - interleave_start).count();
+        std::cout << "  L0 interleave: " << (interleave_us/1000.0) << "ms (" << cfg.co_groups << " OGs)" << std::endl;
     }
 }
 
