@@ -17,7 +17,7 @@ LDFLAGS := -L$(XILINX_XRT)/lib
 LDLIBS := -lxrt_coreutil -luuid -lpthread
 
 # Targets
-TARGETS := test_layer0_416 test_layer0_full test_layer01_chain test_layers_chain test_inference
+TARGETS := test_layer0_416 test_layer0_full test_layer01_chain test_layers_chain test_inference yolo_inference
 
 .PHONY: all clean
 
@@ -36,6 +36,9 @@ test_layers_chain: test_layers_chain.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $< $(LDFLAGS) $(LDLIBS)
 
 test_inference: test_inference.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $< $(LDFLAGS) $(LDLIBS)
+
+yolo_inference: yolo_inference.cpp stb_image.h yolo_postprocess.hpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $< $(LDFLAGS) $(LDLIBS)
 
 clean:
