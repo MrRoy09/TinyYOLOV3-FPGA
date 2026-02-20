@@ -1,5 +1,0 @@
-# Layer 0 quantization parameters (from hardware_sim.py)
-# Using SAME M,n for all output groups
-m=0x000000c0
-n=16
-input_scale=127.0

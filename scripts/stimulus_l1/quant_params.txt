@@ -1,3 +1,0 @@
-# Per-layer quantization (matching hardware_sim.py)
-M=0x000001bb
-n=16

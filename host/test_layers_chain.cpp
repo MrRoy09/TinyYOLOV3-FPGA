@@ -1,15 +1,15 @@
 /*
- * test_layers_chain.cpp - Full Layer 0-5 Chain Test
+ * test_layers_chain.cpp - Full TinyYOLOv3 Inference (All 13 Layers)
  *
- * Runs Layers 0-5 sequentially, using hardware output from each layer
- * as input to the next layer.
+ * Layers 0-5:  Downsampling path with stride-2/1 maxpool
+ * Layers 6-9:  Detection head 1 (512→1024→256→512→255)
+ * Layers 10-12: Detection head 2 (route+upsample+concat path)
  *
- * Layer 0: 3→16,   416→208 (maxpool stride-2)
- * Layer 1: 16→32,  208→104 (maxpool stride-2)
- * Layer 2: 32→64,  104→52  (maxpool stride-2)
- * Layer 3: 64→128, 52→26   (maxpool stride-2)
- * Layer 4: 128→256, 26→13  (maxpool stride-2)
- * Layer 5: 256→512, 13→13  (maxpool stride-1)
+ * Special operations:
+ * - Layer 7,9,10,12: 1x1 convolution
+ * - Layer 9,12: Linear activation (no ReLU) - detection outputs
+ * - Layer 10: Route (uses layer 7 output as input)
+ * - Layer 11: Concat (upsample(layer 10) + layer 4 conv output)
  *
  * Build: make test_layers_chain TARGET=hw
  * Run:   ./test_layers_chain <xclbin_file> [stimulus_dir]
@@ -36,26 +36,40 @@ struct LayerConfig {
     int cin_pad;
     int ci_groups, co_groups;
     int img_h, img_w;        // Before padding
-    int padded_h, padded_w;  // After padding
+    int padded_h, padded_w;  // After padding (for 3x3: +2, for 1x1: same)
     int out_h, out_w;        // After conv + maxpool
-    int maxpool_stride;
+    int maxpool_stride;      // 0=none, 1=stride-1, 2=stride-2
     uint32_t quant_m;
     uint32_t quant_n;
+    int kernel_1x1;          // 1 for 1x1 conv, 0 for 3x3
+    int use_relu;            // 1 for leaky relu, 0 for linear (detection heads)
 };
 
-// Layer configurations
+// Layer configurations from hardware_sim.py
 const LayerConfig LAYERS[] = {
-    // hw_layer, cin, cout, cin_pad, ci_groups, co_groups, img_h, img_w, padded_h, padded_w, out_h, out_w, mp_stride, M, n
-    {0,   3,  16,   8,  1,  2, 416, 416, 418, 418, 208, 208, 2, 0x000000C0, 16},
-    {1,  16,  32,  16,  2,  4, 208, 208, 210, 210, 104, 104, 2, 0x000002BC, 16},
-    {2,  32,  64,  32,  4,  8, 104, 104, 106, 106,  52,  52, 2, 0x000003CA, 16},
-    {3,  64, 128,  64,  8, 16,  52,  52,  54,  54,  26,  26, 2, 0x0000022B, 16},
-    {4, 128, 256, 128, 16, 32,  26,  26,  28,  28,  13,  13, 2, 0x00000230, 16},
-    {5, 256, 512, 256, 32, 64,  13,  13,  15,  15,  13,  13, 1, 0x00000173, 16},
+    // hw_layer, cin, cout, cin_pad, ci_groups, co_groups, img_h, img_w, padded_h, padded_w, out_h, out_w, mp_stride, M, n, kernel_1x1, use_relu
+    // Downsampling path (layers 0-5)
+    {0,   3,   16,    8,   1,   2, 416, 416, 418, 418, 208, 208, 2, 0x000000C0, 16, 0, 1},
+    {1,  16,   32,   16,   2,   4, 208, 208, 210, 210, 104, 104, 2, 0x000002BC, 16, 0, 1},
+    {2,  32,   64,   32,   4,   8, 104, 104, 106, 106,  52,  52, 2, 0x000003CA, 16, 0, 1},
+    {3,  64,  128,   64,   8,  16,  52,  52,  54,  54,  26,  26, 2, 0x0000022B, 16, 0, 1},
+    {4, 128,  256,  128,  16,  32,  26,  26,  28,  28,  13,  13, 2, 0x00000230, 16, 0, 1},
+    {5, 256,  512,  256,  32,  64,  13,  13,  15,  15,  13,  13, 1, 0x00000173, 16, 0, 1},  // stride-1 maxpool
+
+    // Detection head 1 (layers 6-9)
+    {6,  512, 1024,  512,  64, 128,  13,  13,  15,  15,  13,  13, 0, 0x0000014E, 16, 0, 1},  // 3x3, no maxpool
+    {7, 1024,  256, 1024, 128,  32,  13,  13,  13,  13,  13,  13, 0, 0x000003BD, 16, 1, 1},  // 1x1 conv
+    {8,  256,  512,  256,  32,  64,  13,  13,  15,  15,  13,  13, 0, 0x000000B7, 16, 0, 1},  // 3x3
+    {9,  512,  255,  512,  64,  32,  13,  13,  13,  13,  13,  13, 0, 0x00000107, 16, 1, 0},  // 1x1, LINEAR (detection)
+
+    // Detection head 2 (layers 10-12)
+    {10, 256,  128,  256,  32,  16,  13,  13,  13,  13,  13,  13, 0, 0x0000047B, 16, 1, 1},  // 1x1 (input from route/layer 7)
+    {11, 384,  256,  384,  48,  32,  26,  26,  28,  28,  26,  26, 0, 0x000000A3, 16, 0, 1},  // 3x3 (concat input)
+    {12, 256,  255,  256,  32,  32,  26,  26,  26,  26,  26,  26, 0, 0x000000B6, 16, 1, 0},  // 1x1, LINEAR (detection)
 };
 const int NUM_LAYERS = sizeof(LAYERS) / sizeof(LAYERS[0]);
 
-std::string g_stimulus_dir = "scripts/stimulus_chain";
+std::string g_stimulus_dir = "scripts/stimulus_full";
 
 std::vector<uint8_t> read_binary_file(const std::string& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -82,6 +96,34 @@ void pad_spatial(const std::vector<uint8_t>& input, int h, int w, int c,
                 int src_idx = (y * w + x) * c + ch;
                 int dst_idx = ((y + 1) * padded_w + (x + 1)) * c + ch;
                 output[dst_idx] = input[src_idx];
+            }
+        }
+    }
+}
+
+// CPU stride-1 maxpool matching hardware_sim.py golden model
+// Pads right and bottom with -128, maintains spatial size
+void cpu_maxpool_stride1(const uint8_t* input, uint8_t* output, int h, int w, int c) {
+    // For each output position, compute 2x2 max
+    // Edge handling: treat out-of-bounds as -128
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            for (int ch = 0; ch < c; ch++) {
+                int8_t vals[4];
+
+                // Get 2x2 window values, -128 for out-of-bounds
+                vals[0] = static_cast<int8_t>(input[(y * w + x) * c + ch]);
+                vals[1] = (x + 1 < w) ? static_cast<int8_t>(input[(y * w + x + 1) * c + ch]) : -128;
+                vals[2] = (y + 1 < h) ? static_cast<int8_t>(input[((y + 1) * w + x) * c + ch]) : -128;
+                vals[3] = (x + 1 < w && y + 1 < h) ? static_cast<int8_t>(input[((y + 1) * w + x + 1) * c + ch]) : -128;
+
+                // Find max
+                int8_t max_val = vals[0];
+                for (int i = 1; i < 4; i++) {
+                    if (vals[i] > max_val) max_val = vals[i];
+                }
+
+                output[(y * w + x) * c + ch] = static_cast<uint8_t>(max_val);
             }
         }
     }
@@ -132,21 +174,45 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
 
     std::cout << "\n========================================" << std::endl;
     std::cout << " Layer " << cfg.hw_layer << ": " << cfg.cin << "→" << cfg.cout
-              << ", " << cfg.img_h << "→" << cfg.out_h << std::endl;
+              << ", " << cfg.img_h << "→" << cfg.out_h
+              << (cfg.kernel_1x1 ? " [1x1]" : " [3x3]")
+              << (cfg.use_relu ? "" : " [LINEAR]") << std::endl;
     std::cout << "========================================" << std::endl;
     std::cout << "  ci_groups=" << cfg.ci_groups << ", co_groups=" << cfg.co_groups << std::endl;
     std::cout << "  M=0x" << std::hex << cfg.quant_m << std::dec << ", n=" << cfg.quant_n << std::endl;
 
+    // Note: We load weights per-OG (not per-chunk), so cfg_wt_base_addr is always 0.
+    // Each OG's weights fit in ci_groups URAM addresses. Even layer 6 with ci_groups=64
+    // only needs 64 addresses per OG, well within the 4096 URAM depth.
+
+    // Maxpool handling:
+    // - stride=0: no maxpool, HW output = cfg.out_h
+    // - stride=1: CPU maxpool, HW outputs cfg.img_h, then CPU reduces to cfg.out_h
+    // - stride=2: HW maxpool, HW output = cfg.out_h
+    bool use_cpu_maxpool = (cfg.maxpool_stride == 1);
+    int hw_out_h = use_cpu_maxpool ? cfg.img_h : cfg.out_h;
+    int hw_out_w = use_cpu_maxpool ? cfg.img_w : cfg.out_w;
+
+    if (use_cpu_maxpool) {
+        std::cout << "  NOTE: CPU stride-1 maxpool (HW outputs " << hw_out_h << "x" << hw_out_w << ")" << std::endl;
+    } else if (cfg.maxpool_stride == 0) {
+        std::cout << "  NOTE: No maxpool (conv only)" << std::endl;
+    }
+
     // Calculate sizes
     size_t pixel_bytes = cfg.padded_h * cfg.padded_w * cfg.cin_pad;
-    size_t output_bytes_per_og = cfg.out_h * cfg.out_w * 8;
+    size_t hw_output_bytes_per_og = hw_out_h * hw_out_w * 8;  // HW output (conv for stride-1)
+    size_t final_output_bytes_per_og = cfg.out_h * cfg.out_w * 8;  // Final output (after CPU maxpool if needed)
     size_t weight_bytes_per_og = cfg.ci_groups * 8 * 8 * 16;  // ci_groups * 8 banks * 8 urams * 16 bytes
 
     // Allocate device buffers
     size_t weight_buf_size = ((weight_bytes_per_og + 4095) / 4096) * 4096;
     size_t bias_buf_size = 4096;
     size_t pixel_buf_size = ((pixel_bytes + 4095) / 4096) * 4096;
-    size_t output_buf_size = ((output_bytes_per_og + 4095) / 4096) * 4096;
+    size_t output_buf_size = ((hw_output_bytes_per_og + 4095) / 4096) * 4096;
+
+    // Temp buffer for CPU maxpool
+    std::vector<uint8_t> cpu_maxpool_out;
 
     xrt::bo weight_bo(device, weight_buf_size, kernel.group_id(19));
     xrt::bo bias_bo(device, bias_buf_size, kernel.group_id(20));
@@ -200,7 +266,7 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         run.set_arg(4, static_cast<uint32_t>(weights.size()));
         run.set_arg(5, static_cast<uint32_t>(biases.size()));
         run.set_arg(6, static_cast<uint32_t>(pixel_bytes));
-        run.set_arg(7, static_cast<uint32_t>(output_bytes_per_og));
+        run.set_arg(7, static_cast<uint32_t>(hw_output_bytes_per_og));  // HW output size
 
         run.set_arg(8, static_cast<uint32_t>(cfg.ci_groups));
         run.set_arg(9, static_cast<uint32_t>(0));  // CRITICAL: Must be 0 for per-OG bias loading
@@ -208,12 +274,14 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         run.set_arg(11, static_cast<uint32_t>(cfg.cin_pad));
         run.set_arg(12, static_cast<uint32_t>(cfg.padded_w));
 
-        run.set_arg(13, static_cast<uint32_t>(1)); // use_maxpool
-        run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0));
+        // Maxpool config: stride-1 done on CPU, stride-2 in HW, 0=disabled
+        bool enable_hw_maxpool = (cfg.maxpool_stride == 2);
+        run.set_arg(13, static_cast<uint32_t>(enable_hw_maxpool ? 1 : 0)); // use_maxpool
+        run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0)); // stride_2
         run.set_arg(15, cfg.quant_m);
         run.set_arg(16, cfg.quant_n);
-        run.set_arg(17, static_cast<uint32_t>(1)); // use_relu (leaky)
-        run.set_arg(18, static_cast<uint32_t>(0)); // kernel_1x1 = 0 (3x3)
+        run.set_arg(17, static_cast<uint32_t>(cfg.use_relu));     // use_relu from config
+        run.set_arg(18, static_cast<uint32_t>(cfg.kernel_1x1));   // kernel_1x1 from config
 
         run.set_arg(19, weight_bo);
         run.set_arg(20, bias_bo);
@@ -232,13 +300,23 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         // Read output
         output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
+        // For stride-1: apply CPU maxpool to match golden model
+        const uint8_t* final_output_ptr = output_ptr;
+        if (use_cpu_maxpool) {
+            cpu_maxpool_out.resize(final_output_bytes_per_og);
+            cpu_maxpool_stride1(output_ptr, cpu_maxpool_out.data(), hw_out_h, hw_out_w, 8);
+            final_output_ptr = cpu_maxpool_out.data();
+        }
+
         // Store in layer output (interleaved by output group)
+        // Handle 255 output channels: last OG has only 7 valid channels
+        int valid_channels = std::min(8, cfg.cout - og * 8);
         for (int y = 0; y < cfg.out_h; y++) {
             for (int x = 0; x < cfg.out_w; x++) {
-                for (int ch = 0; ch < 8; ch++) {
+                for (int ch = 0; ch < valid_channels; ch++) {
                     int src_idx = (y * cfg.out_w + x) * 8 + ch;
                     int dst_idx = (y * cfg.out_w + x) * cfg.cout + og * 8 + ch;
-                    layer_output[dst_idx] = output_ptr[src_idx];
+                    layer_output[dst_idx] = final_output_ptr[src_idx];
                 }
             }
         }
@@ -247,9 +325,25 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         std::string expected_path = layer_dir + "/expected_og" + std::to_string(og) + ".bin";
         auto expected = read_binary_file(expected_path);
 
-        int mismatches = compare_outputs(output_ptr, expected.data(),
-                                        output_bytes_per_og, 3,
-                                        "  OG" + std::to_string(og));
+        // Enable verbose for Layer 0 (first 2 OGs) to debug mismatches
+        bool verbose_debug = (cfg.hw_layer == 0 && og <= 1);
+        int mismatches = compare_outputs(final_output_ptr, expected.data(),
+                                        final_output_bytes_per_og, 3,
+                                        "  OG" + std::to_string(og), verbose_debug);
+
+        // Print first 16 bytes for debugging Layer 0 OG0
+        if (verbose_debug) {
+            std::cout << "    First 16 bytes actual:   ";
+            for (int k = 0; k < 16; k++) {
+                std::cout << std::setw(4) << static_cast<int>(static_cast<int8_t>(final_output_ptr[k])) << " ";
+            }
+            std::cout << std::endl;
+            std::cout << "    First 16 bytes expected: ";
+            for (int k = 0; k < 16; k++) {
+                std::cout << std::setw(4) << static_cast<int>(static_cast<int8_t>(expected[k])) << " ";
+            }
+            std::cout << std::endl;
+        }
         total_mismatches += mismatches;
     }
 
@@ -274,7 +368,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "========================================" << std::endl;
-    std::cout << " TinyYOLOv3 Layers 0-5 Chain Test" << std::endl;
+    std::cout << " TinyYOLOv3 Full Inference (13 Layers)" << std::endl;
     std::cout << "========================================" << std::endl;
     std::cout << "XCLBIN: " << xclbin_file << std::endl;
     std::cout << "Stimulus: " << g_stimulus_dir << std::endl;

@@ -155,7 +155,7 @@ def main():
         cin_pad = ((cin + 7) // 8) * 8
         ci_groups = cin_pad // 8
         co_groups = cout // 8
-        spatial_out = spatial_in // mp_stride
+        spatial_out = spatial_in // mp_stride  # stride-1 maintains size, stride-2 halves
         padded_in = spatial_in + 2  # 1-pixel border
 
         print(f"  Weights: {weights.shape}, Biases: {biases.shape}")

@@ -1,0 +1,15 @@
+hw_layer=8
+npz_idx=14
+cin=256
+cout=512
+cin_pad=256
+ci_groups=32
+co_groups=64
+spatial_in=13
+spatial_out=13
+padded_in=15
+maxpool_stride=0
+kernel_size=3
+use_relu=1
+quant_m=0x000000b7
+quant_n=16
