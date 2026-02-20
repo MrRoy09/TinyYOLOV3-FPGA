@@ -183,6 +183,13 @@ logic        wb_rd_done_latch;
 // Similar latch for bias loading - wait for tlast before clearing loading_bias
 logic        bias_load_done;
 
+// Weight/bias byte counters for proper completion detection (matching pixel counter pattern)
+// (tlast fires at end of EACH AXI burst, not just final transfer)
+logic [LP_XFER_SIZE_WIDTH-1:0]  wt_total_bytes_reg;     // Expected weight bytes (captured on wb_rd_start)
+logic [LP_XFER_SIZE_WIDTH-1:0]  wt_byte_count;          // Actual weight bytes received
+logic [LP_XFER_SIZE_WIDTH-1:0]  bias_total_bytes_reg;   // Expected bias bytes (captured on wb_rd_start)
+logic [LP_XFER_SIZE_WIDTH-1:0]  bias_byte_count;        // Actual bias bytes received
+
 // Pixel read master signals
 logic                                    px_rd_start;
 logic                                    px_rd_done;
@@ -556,24 +563,85 @@ assign weight_bias_axi_bready  = 1'b1;
 assign wt_wr_data = wb_axis_tdata[71:0];
 assign wt_wr_en   = wb_axis_tvalid && loading_weights;
 
-// Track when weight loading is done (latch on tlast)
+// Detect rising edge of loading_weights and loading_bias for byte count capture
+logic loading_weights_d, loading_bias_d;
+wire  loading_weights_rise = loading_weights && !loading_weights_d;
+wire  loading_bias_rise    = loading_bias && !loading_bias_d;
+
+always_ff @(posedge ap_clk) begin
+    if (areset) begin
+        loading_weights_d <= 1'b0;
+        loading_bias_d    <= 1'b0;
+    end else begin
+        loading_weights_d <= loading_weights;
+        loading_bias_d    <= loading_bias;
+    end
+end
+
+// Register expected byte counts on rising edge of loading signals
+// This captures wb_rd_size which was set in the same cycle as loading_weights/loading_bias
+always_ff @(posedge ap_clk) begin
+    if (areset) begin
+        wt_total_bytes_reg   <= '0;
+        bias_total_bytes_reg <= '0;
+    end else if (loading_weights_rise) begin
+        // Capture weight size when loading_weights goes high
+        wt_total_bytes_reg <= num_weights;  // Use num_weights directly (more stable)
+    end else if (loading_bias_rise) begin
+        // Capture bias size when loading_bias goes high
+        bias_total_bytes_reg <= num_bias;   // Use num_bias directly
+    end
+end
+
+// Count weight bytes received (each beat is 16 bytes for 128-bit interface)
+always_ff @(posedge ap_clk) begin
+    if (areset)
+        wt_byte_count <= '0;
+    else if (state == ST_RESET)
+        wt_byte_count <= '0;  // Reset counter at start of each kernel invocation
+    else if (wt_wr_en)
+        wt_byte_count <= wt_byte_count + (C_WEIGHT_BIAS_AXI_DATA_WIDTH / 8);  // +16 bytes per beat
+end
+
+// Count bias bytes received (each beat is 16 bytes for 128-bit interface)
+always_ff @(posedge ap_clk) begin
+    if (areset)
+        bias_byte_count <= '0;
+    else if (state == ST_RESET)
+        bias_byte_count <= '0;  // Reset counter at start of each kernel invocation
+    else if (bias_wr_en)
+        bias_byte_count <= bias_byte_count + (C_WEIGHT_BIAS_AXI_DATA_WIDTH / 8);  // +16 bytes per beat
+end
+
+// Generate weight done signal: HIGH when we've received all weight bytes
+// (Combinational, matching pixel counter pattern)
+wire wt_true_last = wt_wr_en &&
+                    ((wt_byte_count + (C_WEIGHT_BIAS_AXI_DATA_WIDTH / 8)) >= wt_total_bytes_reg) &&
+                    (wt_total_bytes_reg != '0);
+
+// Generate bias done signal: HIGH when we've received all bias bytes
+wire bias_true_last = bias_wr_en &&
+                      ((bias_byte_count + (C_WEIGHT_BIAS_AXI_DATA_WIDTH / 8)) >= bias_total_bytes_reg) &&
+                      (bias_total_bytes_reg != '0);
+
+// Latch weight done (since FSM checks it after the transfer completes)
 always_ff @(posedge ap_clk) begin
     if (areset)
         wt_unpack_done <= 1'b0;
     else if (state == ST_RESET)
         wt_unpack_done <= 1'b0;  // Clear during reset
-    else if (wb_axis_tvalid && wb_axis_tlast && loading_weights)
-        wt_unpack_done <= 1'b1;
+    else if (wt_true_last)
+        wt_unpack_done <= 1'b1;  // Latch when final weight beat arrives
 end
 
-// Track when bias loading is done (latch on tlast during bias phase)
+// Latch bias done (since FSM checks it after the transfer completes)
 always_ff @(posedge ap_clk) begin
     if (areset)
         bias_load_done <= 1'b0;
     else if (state == ST_RESET)
         bias_load_done <= 1'b0;  // Clear during reset
-    else if (wb_axis_tvalid && wb_axis_tlast && loading_bias)
-        bias_load_done <= 1'b1;
+    else if (bias_true_last)
+        bias_load_done <= 1'b1;  // Latch when final bias beat arrives
 end
 
 // ============================================================================

@@ -1,0 +1,5 @@
+# Layer 3 quantization parameters
+m=0x0000022b
+n=16
+ci_groups=8
+co_groups=16

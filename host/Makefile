@@ -17,7 +17,7 @@ LDFLAGS := -L$(XILINX_XRT)/lib
 LDLIBS := -lxrt_coreutil -luuid -lpthread
 
 # Targets
-TARGETS := test_layer0_416 test_layer0_full test_layer01_chain
+TARGETS := test_layer0_416 test_layer0_full test_layer01_chain test_layers_chain
 
 .PHONY: all clean
 
@@ -30,6 +30,9 @@ test_layer0_full: test_layer0_full.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $< $(LDFLAGS) $(LDLIBS)
 
 test_layer01_chain: test_layer01_chain.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $< $(LDFLAGS) $(LDLIBS)
+
+test_layers_chain: test_layers_chain.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $< $(LDFLAGS) $(LDLIBS)
 
 clean:

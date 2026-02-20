@@ -1,0 +1,13 @@
+hw_layer=3
+npz_idx=6
+cin=64
+cout=128
+cin_pad=64
+ci_groups=8
+co_groups=16
+spatial_in=52
+spatial_out=26
+padded_in=54
+maxpool_stride=2
+quant_m=0x0000022b
+quant_n=16
