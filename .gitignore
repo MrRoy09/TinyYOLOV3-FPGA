@@ -48,3 +48,11 @@ TinyYOLOV3_HW_Complete_ex
 plan.md
 context.md
 fixes.md
+
+# Generated detection outputs
+detection_result.jpg
+detection_output.jpg
+
+# Incomplete stimulus directories (if regenerated)
+scripts/stimulus_batch_test/
+scripts/stimulus_l5/
