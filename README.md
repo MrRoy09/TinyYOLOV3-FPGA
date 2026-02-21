@@ -72,6 +72,46 @@ python3 export_weights_for_cpu.py ../sim/hardware-ai/quantized_params.npz ./weig
 ./yolo_arm_native ./weights_cpu test_image.jpg
 ```
 
+## Running Testbenches
+
+Testbenches are located in `hdl/testbenches/` and use Vivado xsim by default.
+
+### Using the Makefile (recommended)
+
+```bash
+cd hdl/testbenches
+
+# Run a single testbench
+make tb_conv_pe
+make tb_axi_conv_wrapper
+
+# Run test suites
+make unit_tests        # Fast, focused tests
+make integration_tests # Slower, comprehensive tests
+make all_tests         # Everything with summary
+
+# Use Icarus Verilog instead
+make tb_conv_pe SIM=iverilog
+
+# Clean artifacts
+make clean
+```
+
+### Using wrapper scripts
+
+```bash
+./scripts/run_tb.sh tb_conv_pe
+./scripts/run_axi_tb_layer.sh 0   # AXI testbench for layer 0
+```
+
+### Available Testbenches
+
+| Type | Testbenches |
+|------|-------------|
+| Unit | `tb_conv_pe`, `tb_conv_3x3_nhwc`, `tb_quantizer`, `tb_maxpool`, `tb_kernel_window`, `tb_weight_bank`, `tb_bias_store` |
+| Integration | `tb_conv_controller`, `tb_conv_top_batch`, `tb_conv_top_1x1`, `tb_conv_top_multi_og` |
+| E2E | `tb_conv_top_e2e_batch`, `tb_axi_conv_wrapper` |
+
 ## Performance Summary
 
 | Implementation | Inference Time | FPS | Speedup |

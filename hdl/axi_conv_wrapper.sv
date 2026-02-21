@@ -1,18 +1,5 @@
-// ============================================================================
-// TinyYOLOV3_HW_Complete_example.sv (axi_conv_wrapper)
-//
-// AXI Master wrapper for conv_top integration with Vitis RTL Kernel.
-// Drop-in replacement for wizard-generated TinyYOLOV3_HW_Complete_example.sv
-//
-// Control FSM:
-//   IDLE → LOAD_WEIGHTS → LOAD_BIAS → START → PROCESS → DONE
-//
-// AXI Ports:
-//   - weight_bias_axi (128-bit): Sequential reads for weights then biases
-//   - pixel_axi (64-bit): Pixel input stream during PROCESS
-//   - output_axi (64-bit): Output writes during PROCESS
-// ============================================================================
-
+// AXI Master wrapper for conv_top - Vitis RTL Kernel integration
+// FSM: IDLE → RESET → LOAD_WEIGHTS → LOAD_BIAS → START → PROCESS → DONE
 `default_nettype none
 
 module TinyYOLOV3_HW_Complete_example #(
@@ -23,7 +10,6 @@ module TinyYOLOV3_HW_Complete_example #(
     parameter integer C_OUTPUT_AXI_ADDR_WIDTH      = 64,
     parameter integer C_OUTPUT_AXI_DATA_WIDTH      = 64
 )(
-    // System Signals
     input  wire                                      ap_clk,
     input  wire                                      ap_rst_n,
 
@@ -90,13 +76,13 @@ module TinyYOLOV3_HW_Complete_example #(
     input  wire [C_OUTPUT_AXI_DATA_WIDTH-1:0]        output_axi_rdata,
     input  wire                                      output_axi_rlast,
 
-    // Control Signals
+    // Control
     input  wire                                      ap_start,
     output wire                                      ap_idle,
     output wire                                      ap_done,
     output wire                                      ap_ready,
 
-    // Address and size signals
+    // Addresses and sizes
     input  wire [63:0]                               weights_addr,
     input  wire [63:0]                               bias_addr,
     input  wire [63:0]                               pixels_addr,
@@ -106,7 +92,7 @@ module TinyYOLOV3_HW_Complete_example #(
     input  wire [31:0]                               num_pixels,
     input  wire [31:0]                               num_outputs,
 
-    // Configuration registers
+    // Configuration
     input  wire [31:0]                               cfg_ci_groups,
     input  wire [31:0]                               cfg_co_groups,
     input  wire [31:0]                               cfg_wt_base_addr,
@@ -119,7 +105,6 @@ module TinyYOLOV3_HW_Complete_example #(
     input  wire [31:0]                               cfg_use_relu,
     input  wire [31:0]                               cfg_kernel_1x1,
 
-    // AXI pointer addresses (same values, used by AXI masters)
     input  wire [63:0]                               weights_addr_axi,
     input  wire [63:0]                               bias_addr_axi,
     input  wire [63:0]                               pixels_addr_axi,
@@ -129,17 +114,11 @@ module TinyYOLOV3_HW_Complete_example #(
 timeunit 1ps;
 timeprecision 1ps;
 
-// ============================================================================
-// Local Parameters
-// ============================================================================
 localparam integer LP_XFER_SIZE_WIDTH = 32;
 
-// ============================================================================
-// FSM States
-// ============================================================================
 typedef enum logic [2:0] {
     ST_IDLE         = 3'd0,
-    ST_RESET        = 3'd1,  // Reset datapath before loading weights
+    ST_RESET        = 3'd1,
     ST_LOAD_WEIGHTS = 3'd2,
     ST_LOAD_BIAS    = 3'd3,
     ST_START        = 3'd4,
@@ -149,119 +128,94 @@ typedef enum logic [2:0] {
 
 state_t state, state_next;
 
-// ============================================================================
-// Internal Signals
-// ============================================================================
+// Multi-OG batching: process multiple output groups per kernel invocation
+logic [7:0]  og_count;
+wire         og_last = (og_count >= cfg_co_groups[7:0] - 8'd1);
+
+// Pre-computed addresses (timing fix: all arithmetic in registered stage)
+// FSM does simple copy, avoiding FSM→multiplier→adder→reg path
+logic [63:0] weight_full_addr_r;
+logic [63:0] bias_full_addr_r;
+logic [63:0] output_full_addr_r;
+
+always_ff @(posedge ap_clk) begin
+    if (areset) begin
+        weight_full_addr_r <= '0;
+        bias_full_addr_r   <= '0;
+        output_full_addr_r <= '0;
+    end else begin
+        weight_full_addr_r <= weights_addr_axi + ({32'b0, og_count} * {32'b0, num_weights});
+        bias_full_addr_r   <= bias_addr_axi + ({32'b0, og_count} * {32'b0, num_bias});
+        output_full_addr_r <= output_addr_axi + ({32'b0, og_count} * {32'b0, num_outputs});
+    end
+end
+
 (* KEEP = "yes" *)
 logic areset;
-logic ap_start_r;
-logic ap_start_pulse;
-logic ap_idle_r;
-logic ap_done_r;
+logic ap_start_r, ap_start_pulse;
+logic ap_idle_r, ap_done_r;
 
-// Weight/Bias read master signals
-logic                                    wb_rd_start;
-logic                                    wb_rd_done;
+logic                                    wb_rd_start, wb_rd_done;
 logic [C_WEIGHT_BIAS_AXI_ADDR_WIDTH-1:0] wb_rd_addr;
 logic [LP_XFER_SIZE_WIDTH-1:0]           wb_rd_size;
 
-// Weight/Bias read master AXI-Stream output
 logic [C_WEIGHT_BIAS_AXI_DATA_WIDTH-1:0] wb_axis_tdata;
-logic                                    wb_axis_tvalid;
-logic                                    wb_axis_tready;
-logic                                    wb_axis_tlast;
+logic                                    wb_axis_tvalid, wb_axis_tready, wb_axis_tlast;
 
-// Weight unpack bridge outputs
 logic [71:0] wt_wr_data;
-logic        wt_wr_en;
-logic        wt_unpack_done;
+logic        wt_wr_en, wt_unpack_done;
+logic        wb_rd_done_latch, bias_load_done;
 
-// Latch wb_rd_done since it's a pulse that may fire before wt_unpack_done
-// (due to read master's FIFO delaying the AXI-Stream tlast)
-logic        wb_rd_done_latch;
+logic [LP_XFER_SIZE_WIDTH-1:0] wt_total_bytes_reg, wt_byte_count;
+logic [LP_XFER_SIZE_WIDTH-1:0] bias_total_bytes_reg, bias_byte_count;
 
-// Similar latch for bias loading - wait for tlast before clearing loading_bias
-logic        bias_load_done;
+logic                              px_rd_start, px_rd_done;
+logic [C_PIXEL_AXI_ADDR_WIDTH-1:0] px_rd_addr;
+logic [LP_XFER_SIZE_WIDTH-1:0]     px_rd_size;
 
-// Weight/bias byte counters for proper completion detection (matching pixel counter pattern)
-// (tlast fires at end of EACH AXI burst, not just final transfer)
-logic [LP_XFER_SIZE_WIDTH-1:0]  wt_total_bytes_reg;     // Expected weight bytes (captured on wb_rd_start)
-logic [LP_XFER_SIZE_WIDTH-1:0]  wt_byte_count;          // Actual weight bytes received
-logic [LP_XFER_SIZE_WIDTH-1:0]  bias_total_bytes_reg;   // Expected bias bytes (captured on wb_rd_start)
-logic [LP_XFER_SIZE_WIDTH-1:0]  bias_byte_count;        // Actual bias bytes received
+logic [C_PIXEL_AXI_DATA_WIDTH-1:0] px_axis_tdata;
+logic                              px_axis_tvalid, px_axis_tready, px_axis_tlast;
 
-// Pixel read master signals
-logic                                    px_rd_start;
-logic                                    px_rd_done;
-logic [C_PIXEL_AXI_ADDR_WIDTH-1:0]       px_rd_addr;
-logic [LP_XFER_SIZE_WIDTH-1:0]           px_rd_size;
+// Pixel byte counter: AXI TLAST fires per-burst, not at end of transfer
+logic [LP_XFER_SIZE_WIDTH-1:0] px_total_bytes_reg, px_byte_count;
+logic                          px_true_last;
 
-// Pixel read master AXI-Stream output
-logic [C_PIXEL_AXI_DATA_WIDTH-1:0]       px_axis_tdata;
-logic                                    px_axis_tvalid;
-logic                                    px_axis_tready;
-logic                                    px_axis_tlast;
+logic                               out_wr_start, out_wr_done;
+logic [C_OUTPUT_AXI_ADDR_WIDTH-1:0] out_wr_addr;
+logic [LP_XFER_SIZE_WIDTH-1:0]      out_wr_size;
 
-// Pixel counter for generating true last_pixel signal
-// (px_axis_tlast fires on every AXI burst, not just the final one)
-logic [LP_XFER_SIZE_WIDTH-1:0]           px_total_bytes_reg;  // Registered transfer size
-logic [LP_XFER_SIZE_WIDTH-1:0]           px_byte_count;       // Count of bytes received
-logic                                    px_true_last;        // True last pixel signal
+logic [C_OUTPUT_AXI_DATA_WIDTH-1:0] out_axis_tdata;
+logic                               out_axis_tvalid, out_axis_tready;
 
-// Output write master signals
-logic                                    out_wr_start;
-logic                                    out_wr_done;
-logic [C_OUTPUT_AXI_ADDR_WIDTH-1:0]      out_wr_addr;
-logic [LP_XFER_SIZE_WIDTH-1:0]           out_wr_size;
-
-// Output write master AXI-Stream input
-logic [C_OUTPUT_AXI_DATA_WIDTH-1:0]      out_axis_tdata;
-logic                                    out_axis_tvalid;
-logic                                    out_axis_tready;
-
-// conv_top signals
-logic        conv_go;
-logic        conv_busy;
-logic        conv_done_pulse;
-logic        conv_done_latch;
+logic        conv_go, conv_busy, conv_done_pulse, conv_done_latch;
 logic [63:0] conv_data_out;
 logic        conv_data_out_valid;
-
-// Latch for write done (out_wr_done is a pulse, need to latch it)
 logic        out_wr_done_latch;
 
-// Bias routing
 logic        bias_wr_en;
 logic [127:0] bias_wr_data;
-logic        bias_wr_addr_rst;
-logic        wt_wr_addr_rst;
+logic        bias_wr_addr_rst, wt_wr_addr_rst;
+logic        loading_weights, loading_bias;
 
-// State tracking for weight vs bias loading
-logic loading_weights;
-logic loading_bias;
-
-// Track first output to delay write master start
-logic first_output_seen;
-
-// ============================================================================
-// Reset and ap_start edge detection
-// ============================================================================
 always_ff @(posedge ap_clk) begin
     areset     <= ~ap_rst_n;
     ap_start_r <= ap_start;
 end
-
 assign ap_start_pulse = ap_start & ~ap_start_r;
 
-// ============================================================================
-// Datapath Reset - controlled by ST_RESET state
-// This ensures maxpool line buffers and pipeline registers are cleared
-// between kernel invocations. Reset lasts 8 cycles (configurable).
-// ============================================================================
+always_ff @(posedge ap_clk) begin
+    if (areset)
+        og_count <= '0;
+    else if (ap_start_pulse)
+        og_count <= '0;
+    else if (state == ST_DONE && !og_last)
+        og_count <= og_count + 8'd1;
+end
+
+// Datapath reset: clears maxpool buffers between OG iterations
 localparam RESET_CYCLES = 8;
 logic [3:0] reset_cnt;
-logic       datapath_rst;
-logic       reset_done;
+logic       datapath_rst, reset_done;
 
 always_ff @(posedge ap_clk) begin
     if (areset) begin
@@ -269,12 +223,12 @@ always_ff @(posedge ap_clk) begin
         datapath_rst <= 1'b1;
         reset_done   <= 1'b0;
     end else if (state == ST_RESET) begin
-        datapath_rst <= 1'b1;  // Assert reset in ST_RESET state
+        datapath_rst <= 1'b1;
         if (reset_cnt < RESET_CYCLES - 1) begin
             reset_cnt  <= reset_cnt + 1;
             reset_done <= 1'b0;
         end else begin
-            reset_done <= 1'b1;  // Signal FSM to move on
+            reset_done <= 1'b1;
         end
     end else begin
         reset_cnt    <= '0;
@@ -283,24 +237,20 @@ always_ff @(posedge ap_clk) begin
     end
 end
 
-// Latch wb_rd_done since it may fire before wt_unpack_done/bias_load_done
-// (due to read master's internal FIFO delaying AXI-Stream tlast)
+// Latch wb_rd_done: may fire before data arrives due to FIFO delay
 always_ff @(posedge ap_clk) begin
     if (areset)
         wb_rd_done_latch <= 1'b0;
     else if (state == ST_RESET)
-        wb_rd_done_latch <= 1'b0;  // Clear during reset
+        wb_rd_done_latch <= 1'b0;
     else if (wb_rd_done)
-        wb_rd_done_latch <= 1'b1;  // Latch on pulse
+        wb_rd_done_latch <= 1'b1;
     else if ((state == ST_LOAD_WEIGHTS) && (wb_rd_done_latch && wt_unpack_done))
-        wb_rd_done_latch <= 1'b0;  // Clear when done with weights (before starting bias)
+        wb_rd_done_latch <= 1'b0;
     else if ((state == ST_LOAD_BIAS) && (wb_rd_done_latch && bias_load_done))
-        wb_rd_done_latch <= 1'b0;  // Clear when done with bias
+        wb_rd_done_latch <= 1'b0;
 end
 
-// ============================================================================
-// FSM State Register
-// ============================================================================
 always_ff @(posedge ap_clk) begin
     if (areset)
         state <= ST_IDLE;
@@ -308,59 +258,20 @@ always_ff @(posedge ap_clk) begin
         state <= state_next;
 end
 
-// ============================================================================
-// FSM Next State Logic
-// ============================================================================
 always_comb begin
     state_next = state;
-
     case (state)
-        ST_IDLE: begin
-            if (ap_start_pulse)
-                state_next = ST_RESET;  // First reset the datapath
-        end
-
-        ST_RESET: begin
-            // Wait for reset to complete before loading weights
-            if (reset_done)
-                state_next = ST_LOAD_WEIGHTS;
-        end
-
-        ST_LOAD_WEIGHTS: begin
-            if ((wb_rd_done || wb_rd_done_latch) && wt_unpack_done)
-                state_next = ST_LOAD_BIAS;
-        end
-
-        ST_LOAD_BIAS: begin
-            // Wait for all bias data to arrive via AXI-Stream (not just ctrl_done)
-            if ((wb_rd_done || wb_rd_done_latch) && bias_load_done)
-                state_next = ST_START;
-        end
-
-        ST_START: begin
-            // Single cycle to pulse conv_go and start pixel DMA
-            state_next = ST_PROCESS;
-        end
-
-        ST_PROCESS: begin
-            // Both conv_top and write master must complete
-            if (conv_done_latch && out_wr_done_latch)
-                state_next = ST_DONE;
-        end
-
-        ST_DONE: begin
-            state_next = ST_IDLE;
-        end
-
-        default: state_next = ST_IDLE;
+        ST_IDLE:         if (ap_start_pulse) state_next = ST_RESET;
+        ST_RESET:        if (reset_done) state_next = ST_LOAD_WEIGHTS;
+        ST_LOAD_WEIGHTS: if ((wb_rd_done || wb_rd_done_latch) && wt_unpack_done) state_next = ST_LOAD_BIAS;
+        ST_LOAD_BIAS:    if ((wb_rd_done || wb_rd_done_latch) && bias_load_done) state_next = ST_START;
+        ST_START:        state_next = ST_PROCESS;
+        ST_PROCESS:      if (conv_done_latch && out_wr_done_latch) state_next = ST_DONE;
+        ST_DONE:         state_next = og_last ? ST_IDLE : ST_RESET;
+        default:         state_next = ST_IDLE;
     endcase
 end
 
-// ============================================================================
-// FSM Output Logic
-// ============================================================================
-
-// ap_idle: high when in IDLE state
 always_ff @(posedge ap_clk) begin
     if (areset)
         ap_idle_r <= 1'b1;
@@ -369,59 +280,74 @@ always_ff @(posedge ap_clk) begin
     else if (ap_start_pulse)
         ap_idle_r <= 1'b0;
 end
-
 assign ap_idle = ap_idle_r;
 
-// ap_done: pulse for one cycle when complete
 always_ff @(posedge ap_clk) begin
     if (areset)
         ap_done_r <= 1'b0;
     else
-        ap_done_r <= (state == ST_DONE);
+        ap_done_r <= (state == ST_DONE) && og_last;
 end
-
 assign ap_done  = ap_done_r;
 assign ap_ready = ap_done;
 
 // Weight/Bias read master control
+// CRITICAL: addr must be stable BEFORE start pulse (read master samples on same edge)
+logic wb_addr_weight_set, wb_addr_bias_set;
+
 always_ff @(posedge ap_clk) begin
     if (areset) begin
-        wb_rd_start     <= 1'b0;
-        wb_rd_addr      <= '0;
-        wb_rd_size      <= '0;
-        loading_weights <= 1'b0;
-        loading_bias    <= 1'b0;
+        wb_rd_start        <= 1'b0;
+        wb_rd_addr         <= '0;
+        wb_rd_size         <= '0;
+        loading_weights    <= 1'b0;
+        loading_bias       <= 1'b0;
+        wb_addr_weight_set <= 1'b0;
+        wb_addr_bias_set   <= 1'b0;
     end else begin
-        wb_rd_start <= 1'b0;  // Default: pulse
+        wb_rd_start <= 1'b0;
 
         case (state)
+            ST_IDLE: begin
+                wb_addr_weight_set <= 1'b0;
+                wb_addr_bias_set   <= 1'b0;
+            end
+
             ST_RESET: begin
-                // Start weight load when reset completes (about to enter ST_LOAD_WEIGHTS)
-                if (reset_done) begin
+                // Wait reset_cnt>1 for full_addr_r to be valid after og_count change
+                if (!wb_addr_weight_set && reset_cnt > 4'd1) begin
+                    wb_rd_addr <= weight_full_addr_r;
+                    wb_rd_size <= num_weights;
+                    wb_addr_weight_set <= 1'b1;
+                end
+                if (reset_done && wb_addr_weight_set) begin
                     wb_rd_start     <= 1'b1;
-                    wb_rd_addr      <= weights_addr_axi;
-                    wb_rd_size      <= num_weights;  // Size in bytes
                     loading_weights <= 1'b1;
                     loading_bias    <= 1'b0;
                 end
             end
 
             ST_LOAD_WEIGHTS: begin
-                if ((wb_rd_done || wb_rd_done_latch) && wt_unpack_done) begin
-                    // Start bias load
+                if (!wb_addr_bias_set) begin
+                    wb_rd_addr <= bias_full_addr_r;
+                    wb_rd_size <= num_bias;
+                    wb_addr_bias_set <= 1'b1;
+                end
+                if ((wb_rd_done || wb_rd_done_latch) && wt_unpack_done && wb_addr_bias_set) begin
                     wb_rd_start     <= 1'b1;
-                    wb_rd_addr      <= bias_addr_axi;
-                    wb_rd_size      <= num_bias;  // Size in bytes
                     loading_weights <= 1'b0;
                     loading_bias    <= 1'b1;
                 end
             end
 
             ST_LOAD_BIAS: begin
-                // Keep loading_bias high until ALL data arrives via AXI-Stream
-                if ((wb_rd_done || wb_rd_done_latch) && bias_load_done) begin
-                    loading_bias <= 1'b0;  // Only clear when transitioning out
-                end
+                if ((wb_rd_done || wb_rd_done_latch) && bias_load_done)
+                    loading_bias <= 1'b0;
+            end
+
+            ST_DONE: begin
+                wb_addr_weight_set <= 1'b0;
+                wb_addr_bias_set   <= 1'b0;
             end
 
             default: begin
@@ -432,7 +358,6 @@ always_ff @(posedge ap_clk) begin
     end
 end
 
-// Pixel read master control
 always_ff @(posedge ap_clk) begin
     if (areset) begin
         px_rd_start <= 1'b0;
@@ -440,7 +365,6 @@ always_ff @(posedge ap_clk) begin
         px_rd_size  <= '0;
     end else begin
         px_rd_start <= 1'b0;
-
         if (state == ST_START) begin
             px_rd_start <= 1'b1;
             px_rd_addr  <= pixels_addr_axi;
@@ -449,18 +373,7 @@ always_ff @(posedge ap_clk) begin
     end
 end
 
-// Track when first output arrives (for debug)
-always_ff @(posedge ap_clk) begin
-    if (areset)
-        first_output_seen <= 1'b0;
-    else if (state == ST_IDLE)
-        first_output_seen <= 1'b0;  // Clear on new operation
-    else if (conv_data_out_valid)
-        first_output_seen <= 1'b1;  // Latch on first valid output
-end
-
-// Output write master control - start in ST_START before outputs arrive
-// The write master needs ctrl_start BEFORE data arrives on s_axis
+// Output write master: addr set in ST_LOAD_BIAS (before ST_START pulse)
 always_ff @(posedge ap_clk) begin
     if (areset) begin
         out_wr_start <= 1'b0;
@@ -468,20 +381,17 @@ always_ff @(posedge ap_clk) begin
         out_wr_size  <= '0;
     end else begin
         out_wr_start <= 1'b0;
-
-        // Start write master in ST_START (before any output data arrives)
-        if (state == ST_START) begin
-            out_wr_start <= 1'b1;
-            out_wr_addr  <= output_addr_axi;
-            out_wr_size  <= num_outputs;
+        if (state == ST_LOAD_BIAS) begin
+            out_wr_addr <= output_full_addr_r;
+            out_wr_size <= num_outputs;
         end
+        if (state == ST_START)
+            out_wr_start <= 1'b1;
     end
 end
 
-// conv_top control
 assign conv_go = (state == ST_START);
 
-// Latch conv_done pulse (cleared when starting new processing)
 always_ff @(posedge ap_clk) begin
     if (areset)
         conv_done_latch <= 1'b0;
@@ -491,7 +401,6 @@ always_ff @(posedge ap_clk) begin
         conv_done_latch <= 1'b1;
 end
 
-// Latch out_wr_done pulse (write master's ctrl_done is a pulse)
 always_ff @(posedge ap_clk) begin
     if (areset)
         out_wr_done_latch <= 1'b0;
@@ -501,22 +410,16 @@ always_ff @(posedge ap_clk) begin
         out_wr_done_latch <= 1'b1;
 end
 
-// Address reset pulses
-// Weight address reset: happens when reset completes, about to start loading
 assign wt_wr_addr_rst   = (state == ST_RESET) && reset_done;
-assign bias_wr_addr_rst = (state == ST_LOAD_WEIGHTS) && (wb_rd_done || wb_rd_done_latch) && wt_unpack_done;
+// Bias addr reset only on first OG; subsequent OGs accumulate addresses
+assign bias_wr_addr_rst = (state == ST_LOAD_WEIGHTS) && (wb_rd_done || wb_rd_done_latch) && wt_unpack_done && (og_count == 8'd0);
 
-// Route weight/bias data based on loading state
 assign bias_wr_en   = loading_bias && wb_axis_tvalid && wb_axis_tready;
 assign bias_wr_data = wb_axis_tdata;
 
-// Weight unpack bridge ready signal
-assign wb_axis_tready = loading_weights ? 1'b1 :
-                        loading_bias    ? 1'b1 : 1'b0;
+assign wb_axis_tready = loading_weights || loading_bias;
 
-// ============================================================================
-// Weight/Bias AXI Read Master (128-bit)
-// ============================================================================
+// Weight/Bias AXI Read Master
 TinyYOLOV3_HW_Complete_example_axi_read_master #(
     .C_M_AXI_ADDR_WIDTH  (C_WEIGHT_BIAS_AXI_ADDR_WIDTH),
     .C_M_AXI_DATA_WIDTH  (C_WEIGHT_BIAS_AXI_DATA_WIDTH),
@@ -546,7 +449,6 @@ TinyYOLOV3_HW_Complete_example_axi_read_master #(
     .m_axis_tlast            (wb_axis_tlast)
 );
 
-// Tie off write channels (read-only port)
 assign weight_bias_axi_awvalid = 1'b0;
 assign weight_bias_axi_awaddr  = '0;
 assign weight_bias_axi_awlen   = '0;
@@ -556,14 +458,10 @@ assign weight_bias_axi_wstrb   = '0;
 assign weight_bias_axi_wlast   = 1'b0;
 assign weight_bias_axi_bready  = 1'b1;
 
-// ============================================================================
-// Weight extraction (128-bit → 72-bit) - inline, no separate module needed
-// ============================================================================
-// Extract lower 72 bits from 128-bit AXI data
+// Weight extraction (128-bit → 72-bit)
 assign wt_wr_data = wb_axis_tdata[71:0];
 assign wt_wr_en   = wb_axis_tvalid && loading_weights;
 
-// Detect rising edge of loading_weights and loading_bias for byte count capture
 logic loading_weights_d, loading_bias_d;
 wire  loading_weights_rise = loading_weights && !loading_weights_d;
 wire  loading_bias_rise    = loading_bias && !loading_bias_d;
@@ -578,75 +476,61 @@ always_ff @(posedge ap_clk) begin
     end
 end
 
-// Register expected byte counts on rising edge of loading signals
-// This captures wb_rd_size which was set in the same cycle as loading_weights/loading_bias
 always_ff @(posedge ap_clk) begin
     if (areset) begin
         wt_total_bytes_reg   <= '0;
         bias_total_bytes_reg <= '0;
-    end else if (loading_weights_rise) begin
-        // Capture weight size when loading_weights goes high
-        wt_total_bytes_reg <= num_weights;  // Use num_weights directly (more stable)
-    end else if (loading_bias_rise) begin
-        // Capture bias size when loading_bias goes high
-        bias_total_bytes_reg <= num_bias;   // Use num_bias directly
-    end
+    end else if (loading_weights_rise)
+        wt_total_bytes_reg <= num_weights;
+    else if (loading_bias_rise)
+        bias_total_bytes_reg <= num_bias;
 end
 
-// Count weight bytes received (each beat is 16 bytes for 128-bit interface)
 always_ff @(posedge ap_clk) begin
     if (areset)
         wt_byte_count <= '0;
     else if (state == ST_RESET)
-        wt_byte_count <= '0;  // Reset counter at start of each kernel invocation
+        wt_byte_count <= '0;
     else if (wt_wr_en)
-        wt_byte_count <= wt_byte_count + (C_WEIGHT_BIAS_AXI_DATA_WIDTH / 8);  // +16 bytes per beat
+        wt_byte_count <= wt_byte_count + (C_WEIGHT_BIAS_AXI_DATA_WIDTH / 8);
 end
 
-// Count bias bytes received (each beat is 16 bytes for 128-bit interface)
 always_ff @(posedge ap_clk) begin
     if (areset)
         bias_byte_count <= '0;
     else if (state == ST_RESET)
-        bias_byte_count <= '0;  // Reset counter at start of each kernel invocation
+        bias_byte_count <= '0;
     else if (bias_wr_en)
-        bias_byte_count <= bias_byte_count + (C_WEIGHT_BIAS_AXI_DATA_WIDTH / 8);  // +16 bytes per beat
+        bias_byte_count <= bias_byte_count + (C_WEIGHT_BIAS_AXI_DATA_WIDTH / 8);
 end
 
-// Generate weight done signal: HIGH when we've received all weight bytes
-// (Combinational, matching pixel counter pattern)
 wire wt_true_last = wt_wr_en &&
                     ((wt_byte_count + (C_WEIGHT_BIAS_AXI_DATA_WIDTH / 8)) >= wt_total_bytes_reg) &&
                     (wt_total_bytes_reg != '0);
 
-// Generate bias done signal: HIGH when we've received all bias bytes
 wire bias_true_last = bias_wr_en &&
                       ((bias_byte_count + (C_WEIGHT_BIAS_AXI_DATA_WIDTH / 8)) >= bias_total_bytes_reg) &&
                       (bias_total_bytes_reg != '0);
 
-// Latch weight done (since FSM checks it after the transfer completes)
 always_ff @(posedge ap_clk) begin
     if (areset)
         wt_unpack_done <= 1'b0;
     else if (state == ST_RESET)
-        wt_unpack_done <= 1'b0;  // Clear during reset
+        wt_unpack_done <= 1'b0;
     else if (wt_true_last)
-        wt_unpack_done <= 1'b1;  // Latch when final weight beat arrives
+        wt_unpack_done <= 1'b1;
 end
 
-// Latch bias done (since FSM checks it after the transfer completes)
 always_ff @(posedge ap_clk) begin
     if (areset)
         bias_load_done <= 1'b0;
     else if (state == ST_RESET)
-        bias_load_done <= 1'b0;  // Clear during reset
+        bias_load_done <= 1'b0;
     else if (bias_true_last)
-        bias_load_done <= 1'b1;  // Latch when final bias beat arrives
+        bias_load_done <= 1'b1;
 end
 
-// ============================================================================
-// Pixel AXI Read Master (64-bit)
-// ============================================================================
+// Pixel AXI Read Master
 TinyYOLOV3_HW_Complete_example_axi_read_master #(
     .C_M_AXI_ADDR_WIDTH  (C_PIXEL_AXI_ADDR_WIDTH),
     .C_M_AXI_DATA_WIDTH  (C_PIXEL_AXI_DATA_WIDTH),
@@ -676,7 +560,6 @@ TinyYOLOV3_HW_Complete_example_axi_read_master #(
     .m_axis_tlast            (px_axis_tlast)
 );
 
-// Tie off write channels (read-only port)
 assign pixel_axi_awvalid = 1'b0;
 assign pixel_axi_awaddr  = '0;
 assign pixel_axi_awlen   = '0;
@@ -686,15 +569,7 @@ assign pixel_axi_wstrb   = '0;
 assign pixel_axi_wlast   = 1'b0;
 assign pixel_axi_bready  = 1'b1;
 
-// ============================================================================
-// Pixel Counter for True Last Pixel Detection
-// ============================================================================
-// The AXI read master's TLAST fires at the end of EVERY burst (max 256 beats),
-// not just the final transfer. For large images, this causes conv_controller
-// to think it's done after just the first 2KB. We need to count actual pixels
-// and generate a true last_pixel signal.
-
-// Register the transfer size when pixel DMA starts
+// Pixel byte counter: AXI TLAST fires per-burst, need true last detection
 always_ff @(posedge ap_clk) begin
     if (areset)
         px_total_bytes_reg <= '0;
@@ -702,25 +577,20 @@ always_ff @(posedge ap_clk) begin
         px_total_bytes_reg <= px_rd_size;
 end
 
-// Count bytes received (each beat is 8 bytes for 64-bit interface)
 always_ff @(posedge ap_clk) begin
     if (areset)
         px_byte_count <= '0;
     else if (state == ST_RESET)
-        px_byte_count <= '0;  // Reset counter at start of each kernel invocation
+        px_byte_count <= '0;
     else if (px_axis_tvalid && px_axis_tready)
-        px_byte_count <= px_byte_count + (C_PIXEL_AXI_DATA_WIDTH / 8);  // +8 bytes per beat
+        px_byte_count <= px_byte_count + (C_PIXEL_AXI_DATA_WIDTH / 8);
 end
 
-// Generate true last pixel signal: HIGH only when we've received all pixels
-// The last pixel is when byte_count + 8 == total_bytes (i.e., this is the final beat)
 assign px_true_last = px_axis_tvalid && px_axis_tready &&
                       ((px_byte_count + (C_PIXEL_AXI_DATA_WIDTH / 8)) >= px_total_bytes_reg) &&
                       (px_total_bytes_reg != '0);
 
-// ============================================================================
-// Output AXI Write Master (64-bit)
-// ============================================================================
+// Output AXI Write Master
 TinyYOLOV3_HW_Complete_example_axi_write_master #(
     .C_M_AXI_ADDR_WIDTH  (C_OUTPUT_AXI_ADDR_WIDTH),
     .C_M_AXI_DATA_WIDTH  (C_OUTPUT_AXI_DATA_WIDTH),
@@ -752,22 +622,17 @@ TinyYOLOV3_HW_Complete_example_axi_write_master #(
     .s_axis_tdata            (out_axis_tdata)
 );
 
-// Tie off read channels (write-only port)
 assign output_axi_arvalid = 1'b0;
 assign output_axi_araddr  = '0;
 assign output_axi_arlen   = '0;
 assign output_axi_rready  = 1'b1;
 
-// ============================================================================
-// conv_top Instance
-// ============================================================================
+// conv_top instance
 conv_top u_conv_top (
     .clk              (ap_clk),
-    .rst              (datapath_rst),  // Reset during ST_RESET state (clears pipeline/buffers)
-
-    // Configuration (directly from AXI-Lite registers)
+    .rst              (datapath_rst),
     .cfg_ci_groups    (cfg_ci_groups[9:0]),
-    .cfg_output_group (cfg_co_groups[6:0]),      // Note: using cfg_co_groups for output group
+    .cfg_output_group (og_count[6:0]),
     .cfg_wt_base_addr (cfg_wt_base_addr[11:0]),
     .cfg_in_channels  (cfg_in_channels[15:0]),
     .cfg_img_width    (cfg_img_width[15:0]),
@@ -777,39 +642,25 @@ conv_top u_conv_top (
     .cfg_quant_n      (cfg_quant_n[4:0]),
     .cfg_use_relu     (cfg_use_relu[0]),
     .cfg_kernel_1x1   (cfg_kernel_1x1[0]),
-
-    // Control
     .go               (conv_go),
     .busy             (conv_busy),
     .done             (conv_done_pulse),
-
-    // Bias DMA
     .bias_wr_en       (bias_wr_en),
     .bias_wr_data     (bias_wr_data),
     .bias_wr_addr_rst (bias_wr_addr_rst),
-
-    // Weight DMA
     .wt_wr_en         (wt_wr_en),
     .wt_wr_data       (wt_wr_data),
     .wt_wr_addr_rst   (wt_wr_addr_rst),
-
-    // Pixel input (from pixel AXI read master)
     .pixel_in         (px_axis_tdata),
     .pixel_in_valid   (px_axis_tvalid),
-    .pixel_in_last    (px_true_last),  // Use counted last, not AXI TLAST (which fires every burst)
-
-    // Output (to output AXI write master)
+    .pixel_in_last    (px_true_last),
     .data_out         (conv_data_out),
     .data_out_valid   (conv_data_out_valid)
 );
 
-// Connect conv_top output to write master
-// Gate data to prevent X propagation when not valid
 assign out_axis_tdata  = conv_data_out_valid ? conv_data_out : '0;
 assign out_axis_tvalid = conv_data_out_valid;
-
-// Pixel stream ready (conv_top doesn't have backpressure, always accept)
-assign px_axis_tready = 1'b1;
+assign px_axis_tready  = 1'b1;
 
 endmodule : TinyYOLOV3_HW_Complete_example
 

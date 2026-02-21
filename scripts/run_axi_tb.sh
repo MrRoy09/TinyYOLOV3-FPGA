@@ -1,84 +1,31 @@
 #!/bin/bash
-# Run the TinyYOLOV3_HW_Complete AXI testbench
-# Usage: ./run_axi_tb.sh
+# Run the AXI conv wrapper testbench
+# Usage: ./run_axi_tb.sh [SIM=vivado|iverilog]
+#
+# Prerequisites:
+#   - Run configure_axi_tb.py <layer> first to generate stimulus files
 
 set -e
 
-PROJECT_DIR="/media/ubuntu/T7/projects/arm-bharat/TinyYOLOV3_HW_Complete_ex"
-PROJECT_FILE="$PROJECT_DIR/TinyYOLOV3_HW_Complete_ex.xpr"
-SIM_DIR="$PROJECT_DIR/TinyYOLOV3_HW_Complete_ex.sim/sim_1/behav/xsim"
-IMPORTS_DIR="$PROJECT_DIR/imports"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TB_DIR="$SCRIPT_DIR/../hdl/testbenches"
+STIMULUS_DIR="$SCRIPT_DIR/stimulus"
 
-# Source Vivado
-source /media/ubuntu/T7/Xilinx-tools/settings64.sh
+# Source Vivado if available
+if [ -f /media/ubuntu/T7/Xilinx-tools/settings64.sh ]; then
+    source /media/ubuntu/T7/Xilinx-tools/settings64.sh
+fi
 
-echo "========================================"
-echo "TinyYOLOV3 AXI Testbench Runner"
-echo "========================================"
-
-# Step 1: Verify stimulus files exist (configure_axi_tb.py already copies them)
-echo "Step 1: Verifying stimulus files..."
-if [ ! -f "$IMPORTS_DIR/pixels_og0.hex" ]; then
-    echo "ERROR: Stimulus files not found. Run configure_axi_tb.py <layer_num> first!"
+# Verify stimulus files exist
+if [ ! -f "$STIMULUS_DIR/pixels_og0.hex" ]; then
+    echo "ERROR: Stimulus files not found in $STIMULUS_DIR"
+    echo "Run: python3 scripts/configure_axi_tb.py <layer_num> first"
     exit 1
 fi
-echo "  Stimulus files present"
 
-# Step 2: Copy hex files to xsim directory
-echo "Step 2: Copying hex files to simulation directory..."
-mkdir -p "$SIM_DIR"
-cp "$IMPORTS_DIR"/*.hex "$SIM_DIR/"
-echo "  Copied: $(ls "$SIM_DIR"/*.hex | wc -l) hex files"
+# Copy stimulus to testbench work directory
+mkdir -p "$TB_DIR/work"
+cp "$STIMULUS_DIR"/*.hex "$TB_DIR/work/" 2>/dev/null || true
 
-# Step 3: Create TCL script for simulation
-echo "Step 3: Creating simulation script..."
-TCL_SCRIPT=$(mktemp /tmp/run_axi_sim_XXXXXX.tcl)
-
-cat > "$TCL_SCRIPT" << 'EOF'
-# Open project
-open_project PROJECT_FILE_PLACEHOLDER
-
-# Set testbench as top
-set_property top TinyYOLOV3_HW_Complete_tb [get_filesets sim_1]
-set_property top_lib xil_defaultlib [get_filesets sim_1]
-
-# Update compile order
-update_compile_order -fileset sim_1
-
-# Launch simulation
-puts "Launching behavioral simulation..."
-launch_simulation -mode behavioral
-
-# Set timeout (1ms simulation time - should be plenty for debug)
-puts "Running simulation (timeout: 1ms)..."
-run 1ms
-
-# Print final status
-puts ""
-puts "========================================"
-puts "Simulation complete"
-puts "========================================"
-
-# Close
-close_sim
-close_project
-quit
-EOF
-
-# Replace placeholder
-sed -i "s|PROJECT_FILE_PLACEHOLDER|$PROJECT_FILE|g" "$TCL_SCRIPT"
-
-# Step 4: Run simulation
-echo "Step 4: Running Vivado simulation..."
-echo ""
-cd "$PROJECT_DIR"
-vivado -mode batch -source "$TCL_SCRIPT" -nojournal -nolog 2>&1 | tee /tmp/axi_tb_output.log | tail -100
-
-# Cleanup
-rm -f "$TCL_SCRIPT"
-
-echo ""
-echo "========================================"
-echo "Full log saved to: /tmp/axi_tb_output.log"
-echo "========================================"
+cd "$TB_DIR"
+make tb_axi_conv_wrapper "$@"

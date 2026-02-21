@@ -12,7 +12,14 @@
  * - Layer 11: Concat (upsample(layer 10) + layer 4 conv output)
  *
  * Build: make test_layers_chain TARGET=hw
- * Run:   ./test_layers_chain <xclbin_file> [stimulus_dir]
+ * Run:   ./test_layers_chain <xclbin> [stimulus_dir] [--isolated] [max_layers]
+ *
+ * Options:
+ *   --isolated : Test each layer independently using pre-computed inputs
+ *                from the Python golden model (pixels.bin in each layer dir).
+ *                Helps isolate whether RTL issues are in a specific layer
+ *                vs error propagation from earlier layers.
+ *   max_layers : Run only the first N layers (for quick debugging)
  */
 
 #include <iostream>
@@ -24,6 +31,8 @@
 #include <iomanip>
 #include <chrono>
 #include <cmath>
+#include <algorithm>
+#include <cctype>
 
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
@@ -70,6 +79,10 @@ const LayerConfig LAYERS[] = {
 const int NUM_LAYERS = sizeof(LAYERS) / sizeof(LAYERS[0]);
 
 std::string g_stimulus_dir = "scripts/stimulus_full";
+int g_max_layers = 0;              // Run all layers by default
+bool g_stop_on_mismatch = false;   // Stop on first layer with mismatches
+bool g_isolated_mode = false;      // Test each layer with known-good inputs from stimulus
+bool g_no_batch = false;           // Disable batching: process 1 OG per kernel call
 
 std::vector<uint8_t> read_binary_file(const std::string& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -235,16 +248,22 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
     std::cout << "  ci_groups=" << cfg.ci_groups << ", co_groups=" << cfg.co_groups << std::endl;
     std::cout << "  M=0x" << std::hex << cfg.quant_m << std::dec << ", n=" << cfg.quant_n << std::endl;
 
-    // Note: We load weights per-OG (not per-chunk), so cfg_wt_base_addr is always 0.
-    // Each OG's weights fit in ci_groups URAM addresses. Even layer 6 with ci_groups=64
-    // only needs 64 addresses per OG, well within the 4096 URAM depth.
+    // =========================================================================
+    // Multi-OG Batching: Process multiple OGs in single kernel invocation
+    // URAM depth = 4096. Each OG needs ci_groups addresses.
+    // max_og_per_chunk = 4096 / ci_groups
+    // With --no-batch flag: force 1 OG per kernel call (for debugging)
+    // =========================================================================
+    int max_og_per_chunk = g_no_batch ? 1 : (4096 / cfg.ci_groups);
+    int num_chunks = (cfg.co_groups + max_og_per_chunk - 1) / max_og_per_chunk;
+
+    std::cout << "  BATCHING: max_og_per_chunk=" << max_og_per_chunk
+              << ", num_chunks=" << num_chunks << std::endl;
 
     // Maxpool handling:
     // - stride=0: no maxpool, HW output = cfg.out_h
     // - stride=1: HW maxpool with backward-looking (skip row 0/col 0)
-    //   Input must be padded to produce (H+1)x(W+1) conv output
     // - stride=2: HW maxpool, output = input/2
-    // All maxpool now runs in hardware!
     int hw_out_h = cfg.out_h;
     int hw_out_w = cfg.out_w;
 
@@ -254,19 +273,24 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         std::cout << "  NOTE: No maxpool (conv only)" << std::endl;
     }
 
-    // Calculate sizes
-    // For stride-1: input is padded to (H+1+2)x(W+1+2) to produce (H+1)x(W+1) conv output
+    // Calculate per-OG sizes
     int actual_padded_h = (cfg.maxpool_stride == 1) ? (cfg.out_h + 3) : cfg.padded_h;
     int actual_padded_w = (cfg.maxpool_stride == 1) ? (cfg.out_w + 3) : cfg.padded_w;
     size_t pixel_bytes = actual_padded_h * actual_padded_w * cfg.cin_pad;
-    size_t output_bytes_per_og = hw_out_h * hw_out_w * 8;  // HW output (final for all cases)
+    size_t output_bytes_per_og = hw_out_h * hw_out_w * 8;
     size_t weight_bytes_per_og = cfg.ci_groups * 8 * 8 * 16;  // ci_groups * 8 banks * 8 urams * 16 bytes
+    size_t bias_bytes_per_og = 16;  // 8 channels * 4 bytes (only first 16B used, but file may be larger)
 
-    // Allocate device buffers
-    size_t weight_buf_size = ((weight_bytes_per_og + 4095) / 4096) * 4096;
-    size_t bias_buf_size = 4096;
+    // Allocate buffers for max chunk size (all OGs in chunk packed contiguously)
+    int chunk_size = std::min(max_og_per_chunk, cfg.co_groups);
+    size_t total_weight_bytes = chunk_size * weight_bytes_per_og;
+    size_t total_bias_bytes = chunk_size * 32;  // 32 bytes per OG for bias (2 x 128-bit words)
+    size_t total_output_bytes = chunk_size * output_bytes_per_og;
+
+    size_t weight_buf_size = ((total_weight_bytes + 4095) / 4096) * 4096;
+    size_t bias_buf_size = ((total_bias_bytes + 4095) / 4096) * 4096;
     size_t pixel_buf_size = ((pixel_bytes + 4095) / 4096) * 4096;
-    size_t output_buf_size = ((output_bytes_per_og + 4095) / 4096) * 4096;
+    size_t output_buf_size = ((total_output_bytes + 4095) / 4096) * 4096;
 
     xrt::bo weight_bo(device, weight_buf_size, kernel.group_id(19));
     xrt::bo bias_bo(device, bias_buf_size, kernel.group_id(20));
@@ -278,7 +302,7 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
     auto pixel_ptr = pixel_bo.map<uint8_t*>();
     auto output_ptr = output_bo.map<uint8_t*>();
 
-    // Copy pixels
+    // Copy pixels (same for all OGs - pixels are re-read from DDR for each OG)
     std::memset(pixel_ptr, 0, pixel_buf_size);
     std::memcpy(pixel_ptr, pixels.data(), std::min(pixels.size(), pixel_buf_size));
     pixel_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -289,138 +313,220 @@ int run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
 
     auto layer_start = std::chrono::high_resolution_clock::now();
 
-    // Process each output group
-    for (int og = 0; og < cfg.co_groups; og++) {
-        // Load weights
-        std::string weights_path = layer_dir + "/weights_og" + std::to_string(og) + ".bin";
-        auto weights = read_binary_file(weights_path);
+    // Process chunks (most layers have only 1 chunk)
+    for (int chunk = 0; chunk < num_chunks; chunk++) {
+        int chunk_start_og = chunk * max_og_per_chunk;
+        int ogs_in_chunk = std::min(max_og_per_chunk, cfg.co_groups - chunk_start_og);
 
-        std::string biases_path = layer_dir + "/biases_og" + std::to_string(og) + ".bin";
-        auto biases = read_binary_file(biases_path);
+        std::cout << "  Chunk " << chunk << ": OGs " << chunk_start_og
+                  << "-" << (chunk_start_og + ogs_in_chunk - 1) << std::endl;
 
-        // Copy to device
+        // Pack all OG weights and biases into contiguous buffers
         std::memset(weight_ptr, 0, weight_buf_size);
         std::memset(bias_ptr, 0, bias_buf_size);
         std::memset(output_ptr, 0, output_buf_size);
 
-        std::memcpy(weight_ptr, weights.data(), weights.size());
-        std::memcpy(bias_ptr, biases.data(), biases.size());
+        for (int og_in_chunk = 0; og_in_chunk < ogs_in_chunk; og_in_chunk++) {
+            int global_og = chunk_start_og + og_in_chunk;
 
+            // Load and pack weights
+            std::string weights_path = layer_dir + "/weights_og" + std::to_string(global_og) + ".bin";
+            auto weights = read_binary_file(weights_path);
+            std::memcpy(weight_ptr + og_in_chunk * weight_bytes_per_og,
+                       weights.data(),
+                       std::min(weights.size(), weight_bytes_per_og));
+
+            // Load and pack biases
+            std::string biases_path = layer_dir + "/biases_og" + std::to_string(global_og) + ".bin";
+            auto biases = read_binary_file(biases_path);
+            // Bias layout: 32 bytes per OG (2 x 128-bit AXI beats)
+            std::memcpy(bias_ptr + og_in_chunk * 32,
+                       biases.data(),
+                       std::min(biases.size(), static_cast<size_t>(32)));
+        }
+
+        // Sync packed data to device
         weight_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
         bias_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
         output_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-        // Configure kernel
+        // Configure kernel for batched execution
         xrt::run run(kernel);
         run.set_arg(0, weight_bo.address());
         run.set_arg(1, bias_bo.address());
         run.set_arg(2, pixel_bo.address());
         run.set_arg(3, output_bo.address());
 
-        run.set_arg(4, static_cast<uint32_t>(weights.size()));
-        run.set_arg(5, static_cast<uint32_t>(biases.size()));
-        run.set_arg(6, static_cast<uint32_t>(pixel_bytes));
-        run.set_arg(7, static_cast<uint32_t>(output_bytes_per_og));  // HW output size
+        // Per-OG sizes (RTL uses these as strides for address calculation)
+        run.set_arg(4, static_cast<uint32_t>(weight_bytes_per_og));  // Bytes per OG for weights
+        run.set_arg(5, static_cast<uint32_t>(32));                   // Bytes per OG for biases (32B aligned)
+        run.set_arg(6, static_cast<uint32_t>(pixel_bytes));          // Total pixel bytes (same for all OGs)
+        run.set_arg(7, static_cast<uint32_t>(output_bytes_per_og));  // Bytes per OG for output
 
         run.set_arg(8, static_cast<uint32_t>(cfg.ci_groups));
-        run.set_arg(9, static_cast<uint32_t>(0));  // CRITICAL: Must be 0 for per-OG bias loading
-        run.set_arg(10, static_cast<uint32_t>(0)); // wt_base_addr
+        // cfg_co_groups now means "number of OGs to process" (batched mode)
+        run.set_arg(9, static_cast<uint32_t>(ogs_in_chunk));
+        run.set_arg(10, static_cast<uint32_t>(0));  // wt_base_addr always 0
         run.set_arg(11, static_cast<uint32_t>(cfg.cin_pad));
         run.set_arg(12, static_cast<uint32_t>(actual_padded_w));
 
-        // Maxpool config: stride-1 and stride-2 both in HW, 0=disabled
+        // Maxpool config
         bool enable_hw_maxpool = (cfg.maxpool_stride != 0);
-        run.set_arg(13, static_cast<uint32_t>(enable_hw_maxpool ? 1 : 0)); // use_maxpool
-        run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0)); // stride_2 (0 for stride-1)
+        run.set_arg(13, static_cast<uint32_t>(enable_hw_maxpool ? 1 : 0));
+        run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0));
         run.set_arg(15, cfg.quant_m);
         run.set_arg(16, cfg.quant_n);
-        run.set_arg(17, static_cast<uint32_t>(cfg.use_relu));     // use_relu from config
-        run.set_arg(18, static_cast<uint32_t>(cfg.kernel_1x1));   // kernel_1x1 from config
+        run.set_arg(17, static_cast<uint32_t>(cfg.use_relu));
+        run.set_arg(18, static_cast<uint32_t>(cfg.kernel_1x1));
 
         run.set_arg(19, weight_bo);
         run.set_arg(20, bias_bo);
         run.set_arg(21, pixel_bo);
         run.set_arg(22, output_bo);
 
-        // Execute
+        // Execute single kernel call for all OGs in chunk
         run.start();
-        auto state = run.wait(std::chrono::seconds(120));
+        auto state = run.wait(std::chrono::seconds(300));  // Longer timeout for batched ops
 
         if (state == ERT_CMD_STATE_TIMEOUT) {
-            std::cerr << "TIMEOUT on layer " << cfg.hw_layer << " OG " << og << std::endl;
+            std::cerr << "TIMEOUT on layer " << cfg.hw_layer << " chunk " << chunk << std::endl;
             return -1;
         }
 
-        // Read output
+        // Sync all outputs at once
         output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-        // HW produces final output directly (maxpool done in HW for all strides)
-        const uint8_t* final_output_ptr = output_ptr;
+        // Unpack outputs and verify each OG
+        for (int og_in_chunk = 0; og_in_chunk < ogs_in_chunk; og_in_chunk++) {
+            int global_og = chunk_start_og + og_in_chunk;
+            const uint8_t* og_output_ptr = output_ptr + og_in_chunk * output_bytes_per_og;
 
-        // Store in layer output (interleaved by output group)
-        // Handle 255 output channels: last OG has only 7 valid channels
-        int valid_channels = std::min(8, cfg.cout - og * 8);
-        for (int y = 0; y < cfg.out_h; y++) {
-            for (int x = 0; x < cfg.out_w; x++) {
-                for (int ch = 0; ch < valid_channels; ch++) {
-                    int src_idx = (y * cfg.out_w + x) * 8 + ch;
-                    int dst_idx = (y * cfg.out_w + x) * cfg.cout + og * 8 + ch;
-                    layer_output[dst_idx] = final_output_ptr[src_idx];
+            // Store in layer output (interleaved by output group)
+            int valid_channels = std::min(8, cfg.cout - global_og * 8);
+            for (int y = 0; y < cfg.out_h; y++) {
+                for (int x = 0; x < cfg.out_w; x++) {
+                    for (int ch = 0; ch < valid_channels; ch++) {
+                        int src_idx = (y * cfg.out_w + x) * 8 + ch;
+                        int dst_idx = (y * cfg.out_w + x) * cfg.cout + global_og * 8 + ch;
+                        layer_output[dst_idx] = og_output_ptr[src_idx];
+                    }
                 }
             }
-        }
 
-        // Compare with expected
-        std::string expected_path = layer_dir + "/expected_og" + std::to_string(og) + ".bin";
-        auto expected = read_binary_file(expected_path);
+            // Compare with expected
+            std::string expected_path = layer_dir + "/expected_og" + std::to_string(global_og) + ".bin";
+            auto expected = read_binary_file(expected_path);
 
-        // Enable verbose for Layer 0 (first 2 OGs) to debug mismatches
-        bool verbose_debug = (cfg.hw_layer == 0 && og <= 1);
-        int mismatches = compare_outputs(final_output_ptr, expected.data(),
-                                        output_bytes_per_og, 3,
-                                        "  OG" + std::to_string(og), verbose_debug);
+            // Enable verbose debug for layers 2+ to diagnose mismatch issues
+            // Print first 2 OGs for each layer >= 2
+            bool verbose_debug = (cfg.hw_layer >= 2 && global_og <= 1);
+            int mismatches = compare_outputs(og_output_ptr, expected.data(),
+                                            output_bytes_per_og, 3,
+                                            "  OG" + std::to_string(global_og), verbose_debug);
 
-        // Print first 16 bytes for debugging Layer 0 OG0
-        if (verbose_debug) {
-            std::cout << "    First 16 bytes actual:   ";
-            for (int k = 0; k < 16; k++) {
-                std::cout << std::setw(4) << static_cast<int>(static_cast<int8_t>(final_output_ptr[k])) << " ";
+            // Always print detailed comparison for layers 2-5, first 2 OGs
+            if (cfg.hw_layer >= 2 && cfg.hw_layer <= 5 && global_og <= 1) {
+                std::cout << "    === DETAILED DEBUG Layer " << cfg.hw_layer << " OG" << global_og << " ===" << std::endl;
+
+                // Print first 32 values (4 pixels x 8 channels)
+                std::cout << "    First 32 actual:   ";
+                for (int k = 0; k < 32 && k < (int)output_bytes_per_og; k++) {
+                    std::cout << std::setw(4) << static_cast<int>(static_cast<int8_t>(og_output_ptr[k])) << " ";
+                    if ((k + 1) % 8 == 0) std::cout << "| ";
+                }
+                std::cout << std::endl;
+                std::cout << "    First 32 expected: ";
+                for (int k = 0; k < 32 && k < (int)expected.size(); k++) {
+                    std::cout << std::setw(4) << static_cast<int>(static_cast<int8_t>(expected[k])) << " ";
+                    if ((k + 1) % 8 == 0) std::cout << "| ";
+                }
+                std::cout << std::endl;
+
+                // Calculate and print per-pixel difference
+                std::cout << "    Diff (act-exp):    ";
+                for (int k = 0; k < 32 && k < (int)output_bytes_per_og && k < (int)expected.size(); k++) {
+                    int diff = static_cast<int>(static_cast<int8_t>(og_output_ptr[k])) -
+                               static_cast<int>(static_cast<int8_t>(expected[k]));
+                    std::cout << std::setw(4) << diff << " ";
+                    if ((k + 1) % 8 == 0) std::cout << "| ";
+                }
+                std::cout << std::endl;
+
+                // Print some values from middle of output to check pattern
+                size_t mid = output_bytes_per_og / 2;
+                if (mid + 16 <= output_bytes_per_og && mid + 16 <= expected.size()) {
+                    std::cout << "    Mid-16 actual:     ";
+                    for (int k = 0; k < 16; k++) {
+                        std::cout << std::setw(4) << static_cast<int>(static_cast<int8_t>(og_output_ptr[mid + k])) << " ";
+                        if ((k + 1) % 8 == 0) std::cout << "| ";
+                    }
+                    std::cout << std::endl;
+                    std::cout << "    Mid-16 expected:   ";
+                    for (int k = 0; k < 16; k++) {
+                        std::cout << std::setw(4) << static_cast<int>(static_cast<int8_t>(expected[mid + k])) << " ";
+                        if ((k + 1) % 8 == 0) std::cout << "| ";
+                    }
+                    std::cout << std::endl;
+                }
             }
-            std::cout << std::endl;
-            std::cout << "    First 16 bytes expected: ";
-            for (int k = 0; k < 16; k++) {
-                std::cout << std::setw(4) << static_cast<int>(static_cast<int8_t>(expected[k])) << " ";
-            }
-            std::cout << std::endl;
+            total_mismatches += mismatches;
         }
-        total_mismatches += mismatches;
     }
 
     auto layer_end = std::chrono::high_resolution_clock::now();
     auto layer_ms = std::chrono::duration_cast<std::chrono::milliseconds>(layer_end - layer_start).count();
 
     std::cout << "  Layer " << cfg.hw_layer << " total: " << cfg.co_groups << " OGs in "
-              << layer_ms << " ms, mismatches=" << total_mismatches << std::endl;
+              << layer_ms << " ms (" << num_chunks << " kernel calls), mismatches=" << total_mismatches << std::endl;
 
     return total_mismatches;
 }
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <xclbin_file> [stimulus_dir]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <xclbin_file> [stimulus_dir] [options] [max_layers]" << std::endl;
+        std::cerr << "Options:" << std::endl;
+        std::cerr << "  --isolated : Test each layer independently with pre-computed inputs" << std::endl;
+        std::cerr << "  --no-batch : Disable multi-OG batching (1 OG per kernel call)" << std::endl;
+        std::cerr << "  max_layers : Run only first N layers (for debugging)" << std::endl;
         return 1;
     }
 
     std::string xclbin_file = argv[1];
-    if (argc > 2) {
-        g_stimulus_dir = argv[2];
+
+    // Parse arguments
+    for (int i = 2; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--isolated" || arg == "-i") {
+            g_isolated_mode = true;
+        } else if (arg == "--no-batch") {
+            g_no_batch = true;
+        } else if (arg[0] != '-') {
+            // Check if it's a number (max_layers) or a path (stimulus_dir)
+            if (std::isdigit(arg[0])) {
+                g_max_layers = std::stoi(arg);
+            } else {
+                g_stimulus_dir = arg;
+            }
+        }
     }
 
     std::cout << "========================================" << std::endl;
-    std::cout << " TinyYOLOv3 Full Inference (13 Layers)" << std::endl;
+    if (g_isolated_mode) {
+        std::cout << " TinyYOLOv3 ISOLATED Layer Tests" << std::endl;
+        std::cout << " (Each layer uses pre-computed inputs)" << std::endl;
+    } else {
+        std::cout << " TinyYOLOv3 Full Inference (13 Layers)" << std::endl;
+    }
     std::cout << "========================================" << std::endl;
     std::cout << "XCLBIN: " << xclbin_file << std::endl;
     std::cout << "Stimulus: " << g_stimulus_dir << std::endl;
+    if (g_max_layers > 0) {
+        std::cout << "Max layers: " << g_max_layers << std::endl;
+    }
+    if (g_no_batch) {
+        std::cout << "NO-BATCH MODE: 1 OG per kernel call (disables multi-OG batching)" << std::endl;
+    }
 
     try {
         // Initialize XRT
@@ -443,16 +549,22 @@ int main(int argc, char* argv[]) {
         std::vector<uint8_t> layer4_conv_output;  // 26x26x256 (before maxpool, for concat)
         std::vector<uint8_t> layer7_output;       // 13x13x256 (for route to layer 10)
 
-        // Enable chained mode: output of layer N feeds into layer N+1
-        #define USE_CHAINED_INPUT 1
+        // Track per-layer results for summary
+        std::vector<int> layer_mismatches(NUM_LAYERS, -1);  // -1 = not run
 
-        for (int i = 0; i < NUM_LAYERS; i++) {
+        int layers_to_run = (g_max_layers > 0) ? std::min(g_max_layers, NUM_LAYERS) : NUM_LAYERS;
+        for (int i = 0; i < layers_to_run; i++) {
             const LayerConfig& cfg = LAYERS[i];
             std::string layer_dir = g_stimulus_dir + "/layer" + std::to_string(i);
             std::vector<uint8_t> pixels;
 
-            #if USE_CHAINED_INPUT
-            if (i == 0) {
+            if (g_isolated_mode) {
+                // ISOLATED MODE: Load pre-computed inputs from stimulus file
+                // This tests each layer with known-good inputs (from Python golden model)
+                std::cout << "  [ISOLATED] Loading pixels from stimulus" << std::endl;
+                pixels = read_binary_file(layer_dir + "/pixels.bin");
+            }
+            else if (i == 0) {
                 // Layer 0: Load from image file (already padded in stimulus)
                 pixels = read_binary_file(layer_dir + "/pixels.bin");
             }
@@ -494,10 +606,6 @@ int main(int argc, char* argv[]) {
                     pad_spatial(layer_output, prev_h, prev_w, prev_c, pixels);
                 }
             }
-            #else
-            // Load from stimulus file for each layer (independent mode)
-            pixels = read_binary_file(layer_dir + "/pixels.bin");
-            #endif
 
             // Run layer
             int mismatches = run_layer(device, kernel, cfg, pixels, layer_output, layer_dir);
@@ -506,36 +614,43 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             total_mismatches += mismatches;
+            layer_mismatches[i] = mismatches;
 
-            #if USE_CHAINED_INPUT
-            // Save intermediate outputs for routing/concat
-            if (i == 4) {
-                // Save layer 4 conv output BEFORE maxpool (already done by HW)
-                // But HW applies maxpool, so we need the pre-maxpool output
-                // Actually, the current HW outputs 13x13 with maxpool.
-                // We need to run layer 4 without maxpool to get 26x26 output.
-                // For now, load from stimulus file as a workaround.
-                std::string layer4_conv_path = g_stimulus_dir + "/layer4_conv.bin";
-                std::ifstream test_file(layer4_conv_path);
-                if (test_file.good()) {
-                    test_file.close();
-                    layer4_conv_output = read_binary_file(layer4_conv_path);
-                    std::cout << "  [SAVE] Loaded Layer 4 conv output (26x26x256) from file" << std::endl;
-                } else {
-                    // Fallback: use layer 4 expected conv output from stimulus
-                    // This is model.layer_outputs[8] in hardware_sim.py (NPZ 8, before maxpool)
-                    std::cout << "  [WARN] Layer 4 conv output file not found, using stimulus expected" << std::endl;
-                    // Load all expected_og files and reconstruct
-                    layer4_conv_output.resize(26 * 26 * 256);
-                    // For now, we'll generate this file separately
+            // Optional: stop on first layer with significant mismatches
+            if (g_stop_on_mismatch && mismatches > 0) {
+                std::cout << "\n*** STOPPING: Layer " << i << " has " << mismatches << " mismatches ***" << std::endl;
+                break;
+            }
+
+            // Save intermediate outputs for routing/concat (only in chained mode)
+            if (!g_isolated_mode) {
+                if (i == 4) {
+                    // Save layer 4 conv output BEFORE maxpool (already done by HW)
+                    // But HW applies maxpool, so we need the pre-maxpool output
+                    // Actually, the current HW outputs 13x13 with maxpool.
+                    // We need to run layer 4 without maxpool to get 26x26 output.
+                    // For now, load from stimulus file as a workaround.
+                    std::string layer4_conv_path = g_stimulus_dir + "/layer4_conv.bin";
+                    std::ifstream test_file(layer4_conv_path);
+                    if (test_file.good()) {
+                        test_file.close();
+                        layer4_conv_output = read_binary_file(layer4_conv_path);
+                        std::cout << "  [SAVE] Loaded Layer 4 conv output (26x26x256) from file" << std::endl;
+                    } else {
+                        // Fallback: use layer 4 expected conv output from stimulus
+                        // This is model.layer_outputs[8] in hardware_sim.py (NPZ 8, before maxpool)
+                        std::cout << "  [WARN] Layer 4 conv output file not found, using stimulus expected" << std::endl;
+                        // Load all expected_og files and reconstruct
+                        layer4_conv_output.resize(26 * 26 * 256);
+                        // For now, we'll generate this file separately
+                    }
+                }
+                if (i == 7) {
+                    // Save layer 7 output (13x13x256) for route to layer 10
+                    layer7_output = layer_output;
+                    std::cout << "  [SAVE] Layer 7 output (13x13x256) for route" << std::endl;
                 }
             }
-            if (i == 7) {
-                // Save layer 7 output (13x13x256) for route to layer 10
-                layer7_output = layer_output;
-                std::cout << "  [SAVE] Layer 7 output (13x13x256) for route" << std::endl;
-            }
-            #endif
         }
 
         auto total_end = std::chrono::high_resolution_clock::now();
@@ -543,16 +658,49 @@ int main(int argc, char* argv[]) {
 
         // Summary
         std::cout << "\n========================================" << std::endl;
-        std::cout << " Chain Test Complete" << std::endl;
+        if (g_isolated_mode) {
+            std::cout << " ISOLATED LAYER TEST SUMMARY" << std::endl;
+        } else {
+            std::cout << " CHAIN TEST SUMMARY" << std::endl;
+        }
         std::cout << "========================================" << std::endl;
-        std::cout << "Total time: " << total_ms << " ms" << std::endl;
+
+        // Print per-layer results table
+        std::cout << "\n Layer |   Config      | Mismatches | Status" << std::endl;
+        std::cout << "-------+---------------+------------+--------" << std::endl;
+        int passed = 0, failed = 0;
+        for (int i = 0; i < layers_to_run; i++) {
+            const LayerConfig& cfg = LAYERS[i];
+            std::string config = std::to_string(cfg.cin) + "→" + std::to_string(cfg.cout);
+            config += cfg.kernel_1x1 ? " 1x1" : " 3x3";
+
+            std::cout << "   " << std::setw(2) << i << "  | " << std::setw(13) << std::left << config << std::right << " | ";
+            if (layer_mismatches[i] < 0) {
+                std::cout << std::setw(10) << "N/A" << " | SKIP" << std::endl;
+            } else if (layer_mismatches[i] == 0) {
+                std::cout << std::setw(10) << "0" << " | PASS" << std::endl;
+                passed++;
+            } else {
+                std::cout << std::setw(10) << layer_mismatches[i] << " | FAIL" << std::endl;
+                failed++;
+            }
+        }
+        std::cout << "-------+---------------+------------+--------" << std::endl;
+        std::cout << "\nTotal time: " << total_ms << " ms" << std::endl;
+        std::cout << "Passed: " << passed << "/" << layers_to_run << ", Failed: " << failed << std::endl;
         std::cout << "Total mismatches: " << total_mismatches << std::endl;
 
         if (total_mismatches == 0) {
             std::cout << "\n*** ALL LAYERS PASSED ***" << std::endl;
             return 0;
         } else {
-            std::cout << "\n*** CHAIN TEST FAILED ***" << std::endl;
+            if (g_isolated_mode) {
+                std::cout << "\n*** ISOLATED TEST FAILED ***" << std::endl;
+                std::cout << "Layers with errors have RTL issues (inputs were golden)" << std::endl;
+            } else {
+                std::cout << "\n*** CHAIN TEST FAILED ***" << std::endl;
+                std::cout << "Run with --isolated to check if errors are RTL or propagation" << std::endl;
+            }
             return 1;
         }
 

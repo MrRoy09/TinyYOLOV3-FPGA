@@ -1,14 +1,14 @@
+// Top-level convolution module: window → conv_3x3 → quantizer → maxpool
 module conv_top #(
     parameter WT_DEPTH        = 4096,
     parameter WT_ADDR_WIDTH   = $clog2(WT_DEPTH),
     parameter BIAS_DEPTH      = 256,
     parameter BIAS_GROUP_BITS = $clog2(BIAS_DEPTH) - 1,
     parameter WT_LATENCY      = 3,
-    parameter CONV_PE_PIPE    = 4  // 4 stages: multiply → partial_sum → spatial_sum/cycle_sum → acc
+    parameter CONV_PE_PIPE    = 4
 )(
     input  logic        clk,
     input  logic        rst,
-
     input  logic [9:0]                    cfg_ci_groups,
     input  logic [BIAS_GROUP_BITS-1:0]    cfg_output_group,
     input  logic [WT_ADDR_WIDTH-1:0]      cfg_wt_base_addr,
@@ -19,23 +19,19 @@ module conv_top #(
     input  logic [31:0]                   cfg_quant_m,
     input  logic [4:0]                    cfg_quant_n,
     input  logic                          cfg_use_relu,
-    input  logic                          cfg_kernel_1x1,   // 0=3x3, 1=1x1
+    input  logic                          cfg_kernel_1x1,
     input  logic                          go,
     output logic                          busy,
     output logic                          done,
-
     input  logic                          bias_wr_en,
     input  logic [127:0]                  bias_wr_data,
     input  logic                          bias_wr_addr_rst,
-
     input  logic                          wt_wr_en,
     input  logic [71:0]                   wt_wr_data,
     input  logic                          wt_wr_addr_rst,
-
     input  logic [63:0]                   pixel_in,
     input  logic                          pixel_in_valid,
     input  logic                          pixel_in_last,
-
     output logic [63:0]                   data_out,
     output logic                          data_out_valid
 );
@@ -59,7 +55,7 @@ logic                        conv_3x3_data_valid;
 logic [31:0]                 conv_outs [0:7];
 logic                        conv_data_valid;
 
-assign conv_outs      = conv_3x3_outs;
+assign conv_outs       = conv_3x3_outs;
 assign conv_data_valid = conv_3x3_data_valid;
 
 logic [63:0]                 kw_window [0:2][0:2];
@@ -71,6 +67,7 @@ logic                        last_pixel;
 assign pixel_valid_mux = cfg_kernel_1x1 ? pixel_in_valid : kw_dout_valid;
 assign last_pixel      = cfg_kernel_1x1 ? pixel_in_last  : (pixel_in_last & kw_dout_valid);
 
+// Pixel pipeline: 3-stage delay to match weight latency
 logic [63:0] pixel_3x3_d0 [0:2][0:2];
 logic [63:0] pixel_3x3_d1 [0:2][0:2];
 logic [63:0] pixel_3x3_d2 [0:2][0:2];
@@ -94,92 +91,54 @@ logic [63:0] pixel_mux [0:2][0:2];
 
 always_comb begin
     if (cfg_kernel_1x1) begin
-        // 1x1 mode: only center pixel, all others zero
-        for (int r = 0; r < 3; r++) begin
-            for (int c = 0; c < 3; c++) begin
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
                 pixel_mux[r][c] = (r == 1 && c == 1) ? pixel_1x1_d3 : 64'b0;
-            end
-        end
     end else begin
-        // 3x3 mode: use full kernel window
         pixel_mux = pixel_3x3_d2;
     end
 end
 
-bias_store #(
-    .MAX_DEPTH (BIAS_DEPTH)
-) u_bias_store (
-    .clk         (clk),
-    .rst         (rst),
-    .wr_en       (bias_wr_en),
-    .wr_data     (bias_wr_data),
-    .wr_addr_rst (bias_wr_addr_rst),
-    .rd_en       (bias_rd_en),
-    .rd_group    (bias_rd_group),
-    .bias_out    (bias_out),
-    .rd_valid    (bias_valid)
+bias_store #(.MAX_DEPTH(BIAS_DEPTH)) u_bias_store (
+    .clk(clk), .rst(rst),
+    .wr_en(bias_wr_en), .wr_data(bias_wr_data), .wr_addr_rst(bias_wr_addr_rst),
+    .rd_en(bias_rd_en), .rd_group(bias_rd_group),
+    .bias_out(bias_out), .rd_valid(bias_valid)
 );
 
-weight_manager #(
-    .DEPTH (WT_DEPTH)
-) u_weight_manager (
-    .clk         (clk),
-    .rst         (rst),
-    .wr_en       (wt_wr_en),
-    .wr_data     (wt_wr_data),
-    .wr_addr_rst (wt_wr_addr_rst),
-    .rd_en       (wt_rd_en),
-    .rd_addr     (wt_rd_addr),
-    .data_out    (wt_data_out),
-    .data_ready  (wt_data_ready)
+weight_manager #(.DEPTH(WT_DEPTH)) u_weight_manager (
+    .clk(clk), .rst(rst),
+    .wr_en(wt_wr_en), .wr_data(wt_wr_data), .wr_addr_rst(wt_wr_addr_rst),
+    .rd_en(wt_rd_en), .rd_addr(wt_rd_addr),
+    .data_out(wt_data_out), .data_ready(wt_data_ready)
 );
 
 conv_controller #(
-    .WT_ADDR_WIDTH   (WT_ADDR_WIDTH),
-    .BIAS_ADDR_WIDTH (BIAS_GROUP_BITS),
-    .WT_LATENCY      (WT_LATENCY),
-    .CONV_PE_PIPE    (CONV_PE_PIPE),
-    .QUANT_LATENCY   (4),
-    .MAXPOOL_LATENCY (4)
+    .WT_ADDR_WIDTH(WT_ADDR_WIDTH), .BIAS_ADDR_WIDTH(BIAS_GROUP_BITS),
+    .WT_LATENCY(WT_LATENCY), .CONV_PE_PIPE(CONV_PE_PIPE),
+    .QUANT_LATENCY(4), .MAXPOOL_LATENCY(4)
 ) u_conv_controller (
-    .clk              (clk),
-    .rst              (rst),      .cfg_ci_groups    (cfg_ci_groups),
-    .cfg_output_group (cfg_output_group),
-    .cfg_wt_base_addr (cfg_wt_base_addr),
-    .go               (go),
-    .busy             (busy),
-    .done             (done),
-    .bias_rd_en       (bias_rd_en),
-    .bias_rd_group    (bias_rd_group),
-    .bias_valid       (bias_valid),
-    .wt_rd_en         (wt_rd_en),
-    .wt_rd_addr       (wt_rd_addr),
-    .wt_data_ready    (wt_data_ready),
-    .pixel_valid      (pixel_valid_mux),
-    .last_pixel       (last_pixel),
-    .conv_valid_in    (conv_valid_in),
-    .conv_last_channel(conv_last_channel)
+    .clk(clk), .rst(rst),
+    .cfg_ci_groups(cfg_ci_groups), .cfg_output_group(cfg_output_group),
+    .cfg_wt_base_addr(cfg_wt_base_addr),
+    .go(go), .busy(busy), .done(done),
+    .bias_rd_en(bias_rd_en), .bias_rd_group(bias_rd_group), .bias_valid(bias_valid),
+    .wt_rd_en(wt_rd_en), .wt_rd_addr(wt_rd_addr), .wt_data_ready(wt_data_ready),
+    .pixel_valid(pixel_valid_mux), .last_pixel(last_pixel),
+    .conv_valid_in(conv_valid_in), .conv_last_channel(conv_last_channel)
 );
 
 kernelWindow u_kernel_window (
-    .clk        (clk),
-    .rst        (rst),      .data_valid (pixel_in_valid),
-    .in_channels(cfg_in_channels),
-    .img_width  (cfg_img_width),
-    .pixel_in   (pixel_in),
-    .window     (kw_window),
-    .dout_valid (kw_dout_valid)
+    .clk(clk), .rst(rst),
+    .data_valid(pixel_in_valid), .in_channels(cfg_in_channels), .img_width(cfg_img_width),
+    .pixel_in(pixel_in), .window(kw_window), .dout_valid(kw_dout_valid)
 );
 
 conv_3x3 u_conv_3x3 (
-    .clk          (clk),
-    .rst          (rst),      .valid_in     (conv_valid_in),
-    .last_channel (conv_last_channel),
-    .pixels       (pixel_mux),
-    .weights      (wt_data_out),
-    .biases       (bias_out),
-    .outs         (conv_3x3_outs),
-    .data_valid   (conv_3x3_data_valid)
+    .clk(clk), .rst(rst),
+    .valid_in(conv_valid_in), .last_channel(conv_last_channel),
+    .pixels(pixel_mux), .weights(wt_data_out), .biases(bias_out),
+    .outs(conv_3x3_outs), .data_valid(conv_3x3_data_valid)
 );
 
 logic [7:0]  quant_out [0:7];
@@ -189,15 +148,10 @@ logic [63:0] quant_packed;
 generate
     for (genvar i = 0; i < 8; i++) begin : gen_quant
         quantizer u_quant (
-            .clk       (clk),
-            .rst       (rst),
-            .data_in   (conv_outs[i]),
-            .valid_in  (conv_data_valid),
-            .M         (cfg_quant_m),
-            .n         (cfg_quant_n),
-            .use_relu  (cfg_use_relu),
-            .data_out  (quant_out[i]),
-            .valid_out ()
+            .clk(clk), .rst(rst),
+            .data_in(conv_outs[i]), .valid_in(conv_data_valid),
+            .M(cfg_quant_m), .n(cfg_quant_n), .use_relu(cfg_use_relu),
+            .data_out(quant_out[i]), .valid_out()
         );
     end
 endgenerate
@@ -212,7 +166,6 @@ end
 logic [63:0] maxpool_data_out;
 logic        maxpool_valid_out;
 
-
 (* max_fanout = 32 *) logic [15:0] maxpool_img_width_r;
 (* max_fanout = 32 *) logic        maxpool_stride_2_r;
 (* max_fanout = 32 *) logic [15:0] conv_out_width_r;
@@ -223,49 +176,26 @@ always_ff @(posedge clk) begin
         maxpool_stride_2_r  <= '0;
         conv_out_width_r    <= '0;
     end else begin
-        // Conv output width: input_width - 2 for 3x3 kernel, input_width for 1x1
-        conv_out_width_r <= cfg_kernel_1x1 ? cfg_img_width : (cfg_img_width - 16'd2);
-        // Maxpool img_width = conv output width
-        // For stride-1: host pads CONV input to produce (H+1)x(W+1) conv output
-        // Maxpool skips row 0/col 0, producing HxH output
-        // For stride-2: conv output is HxW, maxpool produces (H/2)x(W/2)
+        conv_out_width_r    <= cfg_kernel_1x1 ? cfg_img_width : (cfg_img_width - 16'd2);
         maxpool_img_width_r <= conv_out_width_r;
         maxpool_stride_2_r  <= cfg_stride_2;
     end
 end
 
-// ═══════════════════════════════════════════════════════════════════════════
-// STRIDE-1 MAXPOOL PADDING INSERTION
-// For stride-1, the backward-looking algorithm needs padded input to match
-// Python's forward-looking with bottom-right padding.
-// We insert: 1 PAD pixel after each row, and (W+1) PAD pixels after last row.
-// This converts HxW to (H+1)x(W+1). Maxpool skips row 0 and col 0, outputting HxW.
-//
-// Simple approach: For stride-1, directly pass data to maxpool.
-// The CPU host will pad the CONV INPUT instead, so conv produces (H+1)x(W+1) output.
-// This shifts the padding responsibility to the host layer configuration.
-// ═══════════════════════════════════════════════════════════════════════════
-
+// Stride-1 maxpool: host pads conv input to produce (H+1)x(W+1) output
+// Maxpool skips row0/col0, outputting HxW
 logic [63:0] mp_data_in;
 logic        mp_valid_in;
 
-// For stride-1: Direct pass-through. Host is responsible for input padding.
-// For stride-2: Direct pass-through as before.
 assign mp_data_in  = quant_packed;
 assign mp_valid_in = quant_valid;
 
 maxPool u_maxpool (
-    .clk       (clk),
-    .rst       (rst),
-    .img_width (maxpool_img_width_r),
-    .channels  (16'd8),
-    .stride_2  (maxpool_stride_2_r),
-    .data_in   (mp_data_in),
-    .valid_in  (mp_valid_in),
-    .data_out  (maxpool_data_out),
-    .valid_out (maxpool_valid_out)
+    .clk(clk), .rst(rst),
+    .img_width(maxpool_img_width_r), .channels(16'd8), .stride_2(maxpool_stride_2_r),
+    .data_in(mp_data_in), .valid_in(mp_valid_in),
+    .data_out(maxpool_data_out), .valid_out(maxpool_valid_out)
 );
-
 
 (* max_fanout = 32 *) logic cfg_use_maxpool_r;
 

@@ -129,12 +129,40 @@ def copy_stimulus_files(layer_num, cfg):
                     f.write(f"{word:032x}\n")
             print(f"  Packed {len(biases)} biases into {(len(biases)+3)//4} words")
 
-    # Pixels and expected
-    for fname in ["pixels_og0.hex", "expected_og0.hex"]:
+    # Pixels and expected for all OGs
+    for fname in ["pixels_og0.hex", "expected_og0.hex", "expected_og1.hex", "expected_og2.hex", "expected_og3.hex"]:
         src = os.path.join(stim_dir, fname)
         if os.path.exists(src):
             shutil.copy(src, os.path.join(IMPORTS_DIR, fname))
             print(f"  Copied {fname}")
+
+    # OG1/2/3 weights for batch test
+    for og in [1, 2, 3]:
+        weights_src = os.path.join(stim_dir, f"weights_og{og}.hex")
+        if os.path.exists(weights_src):
+            wt_count = convert_weights_72_to_128(weights_src, os.path.join(IMPORTS_DIR, f"weights_og{og}_axi.hex"))
+            print(f"  Converted {wt_count} OG{og} weight entries")
+
+    # OG1/2/3 biases for batch test
+    for og in [1, 2, 3]:
+        biases_src = os.path.join(stim_dir, f"biases_og{og}.hex")
+        if os.path.exists(biases_src):
+            # Convert 32-bit biases to 128-bit format
+            biases = []
+            with open(biases_src, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        biases.append(int(line, 16))
+
+            with open(os.path.join(IMPORTS_DIR, f"biases_og{og}_axi.hex"), 'w') as f:
+                for i in range(0, len(biases), 4):
+                    word = 0
+                    for j in range(4):
+                        if i + j < len(biases):
+                            word |= (biases[i + j] & 0xFFFFFFFF) << (j * 32)
+                    f.write(f"{word:032x}\n")
+            print(f"  Packed {len(biases)} OG{og} biases into {(len(biases)+3)//4} words")
 
     return True
 

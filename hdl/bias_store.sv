@@ -1,14 +1,14 @@
+// Bias storage: 8 x 32-bit biases per output group
+// Multi-OG: wr_addr_rst only on first OG so addresses accumulate
 module bias_store #(
     parameter MAX_DEPTH  = 256,
     parameter ADDR_WIDTH = $clog2(MAX_DEPTH)
 )(
     input  logic        clk,
     input  logic        rst,
-
     input  logic                  wr_en,
     input  logic [127:0]          wr_data,
     input  logic                  wr_addr_rst,
-
     input  logic                  rd_en,
     input  logic [ADDR_WIDTH-2:0] rd_group,
     output logic [31:0]           bias_out [0:7],
@@ -16,11 +16,10 @@ module bias_store #(
 );
 
 logic [127:0] bram [0:MAX_DEPTH-1];
-
 logic [ADDR_WIDTH-1:0] wr_addr;
 
 always_ff @(posedge clk) begin
-    if (rst || wr_addr_rst)
+    if (wr_addr_rst)
         wr_addr <= 0;
     else if (wr_en) begin
         bram[wr_addr] <= wr_data;
