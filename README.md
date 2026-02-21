@@ -2,7 +2,7 @@
 
 A high-performance FPGA accelerator for real-time TinyYOLOv3 object detection on the Xilinx Kria KV260 edge platform.
 
-## Key Achievements
+## Results
 
 - **276x speedup** over ARM Cortex-A53 CPU baseline
 - **10 FPS** real-time inference (1080x720 camera to display)
