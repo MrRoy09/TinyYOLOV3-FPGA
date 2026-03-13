@@ -8,7 +8,7 @@
 
 ## 1. Introduction
 
-This document presents the design and implementation of a custom FPGA accelerator for TinyYOLOv3 object detection targeting edge deployment on the Kria KV260 platform. The accelerator achieves 448x speedup over an ARM Cortex-A53 baseline, delivering 61ms inference latency (~16 FPS throughput) at 250 MHz. A real-time camera demo with EMA-smoothed bounding box tracking demonstrates end-to-end object detection.
+This document presents the design and implementation of a custom FPGA accelerator for TinyYOLOv3 object detection targeting edge deployment on the Kria KV260 platform. The accelerator achieves **10.5x speedup** over an optimized ARM Cortex-A53 implementation (im2col + NEON SIMD + 4-thread), delivering 61ms inference latency (~16 FPS throughput) at 250 MHz. Both implementations use identical INT8 quantization and run on the same SoC, providing a fair comparison. A real-time camera demo with EMA-smoothed bounding box tracking demonstrates end-to-end object detection.
 
 ---
 
@@ -119,15 +119,16 @@ Testing was performed with various input images resized to 416×416. Both ARM CP
 
 ### 5.2 Latency Comparison
 
-Three implementations are compared, all using identical INT8 quantization parameters:
+The primary comparison is between the FPGA accelerator and an optimized ARM CPU implementation running on the same SoC, both using identical INT8 quantization parameters:
 
-| Implementation | Inference (ms) | FPS | vs Naive | vs FPGA |
-|----------------|----------------|-----|----------|---------|
-| Naive ARM (single-thread, no SIMD) | 27,339 | 0.037 | 1× | 448× slower |
-| Optimized ARM (im2col + NEON + 4-thread) | 640 | 1.6 | 43× | 10.5× slower |
-| **FPGA @ 250 MHz** | **61** | **~16** | **448×** | **1×** |
+| Implementation | Inference (ms) | FPS | Speedup |
+|----------------|----------------|-----|---------|
+| Optimized ARM (im2col + NEON + 4-thread) | 640 | 1.6 | 1× (baseline) |
+| **FPGA @ 250 MHz** | **61** | **~16** | **10.5×** |
 
-The optimized ARM implementation uses im2col to convert convolutions to matrix multiplications, NEON SIMD for INT8 dot products (vmull_s8 + vpadalq_s16), and 4-thread parallelism across all Cortex-A53 cores. This represents a realistic upper bound for CPU performance on this platform.
+The optimized ARM implementation uses im2col to convert convolutions to matrix multiplications, NEON SIMD for INT8 dot products (vmull_s8 + vpadalq_s16), and 4-thread parallelism across all Cortex-A53 cores. This represents a realistic upper bound for CPU performance on this platform, as the Cortex-A53 lacks the ARMv8.2 dot product instruction (SDOT) available on newer cores (A55, A76+).
+
+A naive single-threaded ARM implementation (27,339 ms) is also provided for reference, demonstrating the 43× impact of standard CPU optimization techniques (im2col, SIMD, multi-threading) on the same hardware.
 
 #### Optimized ARM Per-Layer Breakdown
 
@@ -187,7 +188,7 @@ Host-side optimizations include 4-thread parallel DMA-to-cache memcpy, NEON-acce
 
 ### 5.5 Throughput
 
-The system achieves approximately 16 FPS inference throughput (61ms per frame). The live camera demo runs at 13-14 FPS including camera capture, preprocessing, and display overhead. The ARM CPU baseline achieves 0.037 FPS.
+The system achieves approximately 16 FPS inference throughput (61ms per frame). The live camera demo runs at 13-14 FPS including camera capture, preprocessing, and display overhead. The optimized ARM CPU achieves 1.6 FPS on the same SoC.
 
 ---
 
@@ -245,7 +246,7 @@ Several optimizations remain for future iterations:
 
 ## 9. Conclusion
 
-The implemented accelerator achieves 10.5× speedup over an optimized ARM Cortex-A53 implementation (im2col + NEON + 4-thread), delivering real-time TinyYOLOv3 inference at 61ms latency (~16 FPS) on the Kria KV260 edge platform at 250 MHz. Compared to a naive CPU baseline, the speedup is 448×. Resource utilization is efficient with 60.6% DSP usage and 100% URAM usage. Detection accuracy is preserved through INT8 quantization calibrated on 100 COCO val2017 images. A live camera demo with EMA-smoothed bounding box tracking demonstrates practical end-to-end object detection at 13-14 FPS. The design validates the feasibility of deploying CNN-based object detection on resource-constrained edge FPGAs.
+The implemented accelerator achieves **10.5× speedup** over an optimized ARM Cortex-A53 implementation (im2col + NEON + 4-thread) running on the same SoC, delivering real-time TinyYOLOv3 inference at 61ms latency (~16 FPS) on the Kria KV260 edge platform at 250 MHz. This comparison is meaningful because the ARM baseline already applies all standard CPU optimization techniques — the FPGA advantage represents genuine hardware acceleration beyond what software optimization alone can achieve. Resource utilization is efficient with 60.6% DSP usage and 100% URAM usage. Detection accuracy is preserved through INT8 quantization calibrated on 100 COCO val2017 images. A live camera demo with EMA-smoothed bounding box tracking demonstrates practical end-to-end object detection at 13-14 FPS. The design validates the feasibility of deploying CNN-based object detection on resource-constrained edge FPGAs.
 
 ---
 
@@ -253,13 +254,9 @@ The implemented accelerator achieves 10.5× speedup over an optimized ARM Cortex
 
 Two ARM CPU implementations are provided for comparison, both using identical INT8 quantization:
 
-### A.1 Naive Baseline (`yolo_arm_native`)
+### A.1 Optimized Implementation (`yolo_arm_optimized`) — Primary Baseline
 
-Single-threaded, no SIMD. Direct convolution using 7 nested loops. **27,339 ms** per inference.
-
-### A.2 Optimized Implementation (`yolo_arm_optimized`)
-
-Applies standard CPU optimization techniques to the same INT8 model. **640 ms** per inference (43× faster than naive).
+This is the primary CPU baseline used throughout the report. It applies all standard CPU optimization techniques to the same INT8 model, achieving **640 ms** per inference.
 
 | Optimization | Technique | Impact |
 |---|---|---|
@@ -269,6 +266,10 @@ Applies standard CPU optimization techniques to the same INT8 model. **640 ms** 
 | Compiler | -O3 -march=native -ffast-math | Auto-vectorization, instruction scheduling |
 
 Note: The Cortex-A53 lacks the ARMv8.2 dot product instruction (SDOT), which would provide an additional 2-4× speedup on newer cores (A55, A76+). The 640ms result represents a realistic upper bound for this specific CPU.
+
+### A.2 Naive Reference (`yolo_arm_native`)
+
+Single-threaded, no SIMD. Direct convolution using 7 nested loops. **27,339 ms** per inference. Provided for reference only — the 43× gap between naive and optimized ARM illustrates the impact of standard CPU optimization techniques.
 
 ---
 

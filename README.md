@@ -5,8 +5,8 @@ A high-performance FPGA accelerator for real-time TinyYOLOv3 object detection on
 ## Results
 
 - **10.5x speedup** over optimized ARM Cortex-A53 (im2col + NEON + 4-thread)
-- **~16 FPS** inference throughput (61ms per frame)
-- **61ms** FPGA inference vs 640ms optimized ARM vs 27.3s naive ARM
+- **61ms** FPGA inference vs 640ms optimized ARM (both using identical INT8 quantization)
+- **~16 FPS** inference throughput on a 15W edge platform
 - **INT8 quantization** calibrated on 100 COCO val2017 images
 - **Real-time camera demo** with EMA-smoothed bounding box tracking
 
@@ -130,11 +130,12 @@ make clean
 
 | Implementation | Inference (ms) | FPS | Speedup |
 |----------------|----------------|-----|---------|
-| Naive ARM (single-thread, no SIMD) | 27,339 | 0.037 | 1x |
-| Optimized ARM (im2col + NEON + 4-thread) | 640 | 1.6 | 43x |
-| **FPGA @ 250 MHz** | **61** | **~16** | **448x** |
+| Optimized ARM (im2col + NEON + 4-thread) | 640 | 1.6 | 1x (baseline) |
+| **FPGA @ 250 MHz** | **61** | **~16** | **10.5x** |
 
-All three implementations use identical INT8 quantization parameters and produce the same detections.
+Both implementations run on the same Kria KV260 SoC with identical INT8 quantization parameters and produce the same detections. The optimized ARM baseline uses im2col GEMM, NEON SIMD (vmull_s8 + vpadalq_s16), and 4-thread parallelism across all Cortex-A53 cores — representing a realistic upper bound for CPU performance on this platform.
+
+A naive single-threaded ARM implementation (27.3s) is also provided for reference.
 
 ### Per-Layer Breakdown (FPGA @ 250 MHz)
 
