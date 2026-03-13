@@ -2,19 +2,10 @@
  * yolo_arm_native.cpp - ARM-native TinyYOLOv3 INT8 Inference
  *
  * Pure CPU implementation for benchmarking against FPGA accelerator.
- * Uses NEON intrinsics for vectorized INT8 operations on ARM.
- *
- * Features:
- * - Same quantization scheme as FPGA (M, n=16, leaky ReLU >>3)
- * - NEON-optimized convolutions for ARM Cortex-A53/A72
- * - Multi-threaded inference (optional)
- * - OpenCV for image preprocessing
+ * Same quantization scheme as FPGA (M, n=16, leaky ReLU >>3).
  *
  * Build: make yolo_arm_native
- * Run:   ./yolo_arm_native <weights_dir> <image_path> [--threads N]
- *
- * Benchmark against FPGA:
- *   ./yolo_arm_native weights_cpu test.jpg --benchmark 100
+ * Run:   ./yolo_arm_native <weights_dir> <image_path> [--benchmark N]
  */
 
 #include <iostream>
@@ -30,12 +21,10 @@
 #include <thread>
 #include <atomic>
 
-// OpenCV for image preprocessing
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
-// NEON intrinsics for ARM vectorization
 #ifdef __ARM_NEON
 #include <arm_neon.h>
 #define USE_NEON 1
@@ -45,30 +34,26 @@
 
 #include "yolo_postprocess.hpp"
 
-// ============================================================================
-// Layer Configuration
-// ============================================================================
 struct LayerConfig {
-    int hw_layer;      // Hardware layer index
-    int npz_idx;       // NPZ file layer index
-    int cin;           // Input channels (actual)
-    int cout;          // Output channels
-    int kernel;        // Kernel size (1 or 3)
-    int stride;        // Conv stride (always 1 for us, maxpool handles spatial reduction)
-    int pad;           // Padding (1 for 3x3, 0 for 1x1)
-    int use_relu;      // 1=leaky, 0=linear
-    int maxpool_stride;// 0=none, 1=stride-1, 2=stride-2
-    int img_h, img_w;  // Input spatial dimensions
-    int out_h, out_w;  // Output spatial dimensions (after maxpool if any)
+    int hw_layer;
+    int npz_idx;
+    int cin;
+    int cout;
+    int kernel;
+    int stride;
+    int pad;
+    int use_relu;
+    int maxpool_stride;  // 0=none, 1=stride-1, 2=stride-2
+    int img_h, img_w;
+    int out_h, out_w;
 };
 
 const LayerConfig LAYERS[] = {
-    // hw, npz,  cin, cout,  k, s, p, relu, mp,   ih,  iw,  oh,  ow
     {  0,   0,    3,   16,  3, 1, 1,    1,   2,  416, 416, 208, 208},
     {  1,   2,   16,   32,  3, 1, 1,    1,   2,  208, 208, 104, 104},
     {  2,   4,   32,   64,  3, 1, 1,    1,   2,  104, 104,  52,  52},
     {  3,   6,   64,  128,  3, 1, 1,    1,   2,   52,  52,  26,  26},
-    {  4,   8,  128,  256,  3, 1, 1,    1,   2,   26,  26,  13,  13},  // CPU maxpool saves pre-pool
+    {  4,   8,  128,  256,  3, 1, 1,    1,   2,   26,  26,  13,  13},
     {  5,  10,  256,  512,  3, 1, 1,    1,   1,   13,  13,  13,  13},
     {  6,  12,  512, 1024,  3, 1, 1,    1,   0,   13,  13,  13,  13},
     {  7,  13, 1024,  256,  1, 1, 0,    1,   0,   13,  13,  13,  13},
@@ -80,17 +65,14 @@ const LayerConfig LAYERS[] = {
 };
 const int NUM_LAYERS = sizeof(LAYERS) / sizeof(LAYERS[0]);
 
-// ============================================================================
-// Weight Storage
-// ============================================================================
 struct LayerWeights {
-    std::vector<int8_t> weights;  // [cout, cin, kh, kw]
-    std::vector<int32_t> biases;  // [cout]
-    uint32_t M;                   // Quantization multiplier
-    uint32_t n;                   // Shift amount (always 16)
-    float o_scale;                // Output scale for dequantization
-    int kernel;                   // Kernel size
-    int use_relu;                 // Activation type
+    std::vector<int8_t> weights;   // [cout, cin, kh, kw]
+    std::vector<int32_t> biases;   // [cout]
+    uint32_t M;
+    uint32_t n;
+    float o_scale;
+    int kernel;
+    int use_relu;
 };
 
 struct ModelWeights {
@@ -100,9 +82,6 @@ struct ModelWeights {
     float dequant_26x26;
 };
 
-// ============================================================================
-// File I/O
-// ============================================================================
 template<typename T>
 std::vector<T> read_binary_file(const std::string& path, size_t count = 0) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -132,17 +111,12 @@ void load_model_weights(const std::string& weights_dir, ModelWeights& model) {
 
         LayerWeights& lw = model.layers[i];
 
-        // Load weights
-        std::string wpath = layer_dir + "/weights.bin";
-        lw.weights = read_binary_file<int8_t>(wpath);
+        lw.weights = read_binary_file<int8_t>(layer_dir + "/weights.bin");
         total_bytes += lw.weights.size();
 
-        // Load biases
-        std::string bpath = layer_dir + "/biases.bin";
-        lw.biases = read_binary_file<int32_t>(bpath);
+        lw.biases = read_binary_file<int32_t>(layer_dir + "/biases.bin");
         total_bytes += lw.biases.size() * sizeof(int32_t);
 
-        // Load config
         std::string cpath = layer_dir + "/config.bin";
         std::ifstream cfile(cpath, std::ios::binary);
         if (!cfile.is_open()) {
@@ -160,14 +134,12 @@ void load_model_weights(const std::string& weights_dir, ModelWeights& model) {
         lw.kernel = kernel;
     }
 
-    // Load dequant scales
     std::string dpath = weights_dir + "/dequant_scales.bin";
     std::ifstream dfile(dpath, std::ios::binary);
     if (dfile.is_open()) {
         dfile.read(reinterpret_cast<char*>(&model.dequant_13x13), 4);
         dfile.read(reinterpret_cast<char*>(&model.dequant_26x26), 4);
     } else {
-        // Fallback values from hardware_sim.py
         model.dequant_13x13 = 5.3159403800964355f;
         model.dequant_26x26 = 5.409017562866211f;
     }
@@ -175,9 +147,7 @@ void load_model_weights(const std::string& weights_dir, ModelWeights& model) {
     std::cout << "  Loaded " << (total_bytes / 1024 / 1024) << " MB of weights" << std::endl;
 }
 
-// ============================================================================
-// Image Preprocessing
-// ============================================================================
+// Normalize [0,255] to INT8, output in NCHW format
 std::vector<int8_t> load_and_preprocess_image(const std::string& path, int target_size = 416) {
     cv::Mat img = cv::imread(path, cv::IMREAD_COLOR);
     if (img.empty()) {
@@ -186,30 +156,24 @@ std::vector<int8_t> load_and_preprocess_image(const std::string& path, int targe
 
     std::cout << "Loaded image: " << img.cols << "x" << img.rows << "x" << img.channels() << std::endl;
 
-    // Resize using OpenCV (NEON-accelerated on ARM)
     cv::Mat resized;
     cv::resize(img, resized, cv::Size(target_size, target_size), 0, 0, cv::INTER_LINEAR);
 
-    // Convert BGR to RGB
     cv::Mat rgb;
     cv::cvtColor(resized, rgb, cv::COLOR_BGR2RGB);
 
-    // Normalize to [0, 1] and quantize to INT8 with scale=127
-    // NCHW format for convolution - optimized single pass
     std::vector<int8_t> output(3 * target_size * target_size);
 
-    // Pre-compute plane offsets for NCHW layout
     const int plane_size = target_size * target_size;
     int8_t* plane_r = output.data();
     int8_t* plane_g = output.data() + plane_size;
     int8_t* plane_b = output.data() + 2 * plane_size;
 
-    // Single pass through image - efficient memory access pattern
     for (int y = 0; y < target_size; y++) {
         const uint8_t* row = rgb.ptr<uint8_t>(y);
         int row_offset = y * target_size;
         for (int x = 0; x < target_size; x++) {
-            // Quantize: (pixel + 1) >> 1 ≈ pixel * 127 / 255
+            // (pixel + 1) >> 1 approximates pixel * 127 / 255
             plane_r[row_offset + x] = static_cast<int8_t>((row[0] + 1) >> 1);
             plane_g[row_offset + x] = static_cast<int8_t>((row[1] + 1) >> 1);
             plane_b[row_offset + x] = static_cast<int8_t>((row[2] + 1) >> 1);
@@ -220,11 +184,7 @@ std::vector<int8_t> load_and_preprocess_image(const std::string& path, int targe
     return output;
 }
 
-// ============================================================================
-// Convolution Implementations
-// ============================================================================
-
-// Reference (non-NEON) convolution - NCHW format
+// NCHW convolution with bias, leaky ReLU, and quantization
 void conv2d_reference(const int8_t* input, int in_h, int in_w, int in_c,
                       const int8_t* weights, const int32_t* biases,
                       int out_c, int kernel, int pad,
@@ -238,7 +198,6 @@ void conv2d_reference(const int8_t* input, int in_h, int in_w, int in_c,
             for (int ox = 0; ox < out_w; ox++) {
                 int32_t acc = 0;
 
-                // Convolution
                 for (int ic = 0; ic < in_c; ic++) {
                     for (int ky = 0; ky < kernel; ky++) {
                         for (int kx = 0; kx < kernel; kx++) {
@@ -258,15 +217,14 @@ void conv2d_reference(const int8_t* input, int in_h, int in_w, int in_c,
                     }
                 }
 
-                // Add bias
                 acc += biases[oc];
 
-                // Leaky ReLU (hardware uses >>3 approximation for 0.1)
+                // Leaky ReLU: hardware uses >>3 approximation for 0.1
                 if (use_relu && acc < 0) {
                     acc = acc >> 3;
                 }
 
-                // Quantize output
+                // Quantize: (acc * M) >> n, clamp to INT8
                 int64_t scaled = (static_cast<int64_t>(acc) * M) >> n;
                 scaled = std::max(static_cast<int64_t>(-128), std::min(static_cast<int64_t>(127), scaled));
 
@@ -276,27 +234,17 @@ void conv2d_reference(const int8_t* input, int in_h, int in_w, int in_c,
     }
 }
 
-// Note: NEON optimization disabled for now - using reference implementation
-// The reference implementation is correct and portable; NEON can be added later
-// for further performance optimization if needed.
-
-// Dispatch to best available implementation
 void conv2d(const int8_t* input, int in_h, int in_w, int in_c,
             const int8_t* weights, const int32_t* biases,
             int out_c, int kernel, int pad,
             uint32_t M, uint32_t n, int use_relu,
             int8_t* output, int out_h, int out_w) {
 
-    // Use reference implementation (NEON optimization would require more work
-    // for production-quality performance)
     conv2d_reference(input, in_h, in_w, in_c,
                      weights, biases, out_c, kernel, pad,
                      M, n, use_relu, output, out_h, out_w);
 }
 
-// ============================================================================
-// Pooling Operations
-// ============================================================================
 void maxpool_2x2_stride2(const int8_t* input, int h, int w, int c,
                          int8_t* output) {
     int out_h = h / 2;
@@ -310,8 +258,7 @@ void maxpool_2x2_stride2(const int8_t* input, int h, int w, int c,
                 int8_t v10 = input[ch * h * w + (oy * 2 + 1) * w + (ox * 2)];
                 int8_t v11 = input[ch * h * w + (oy * 2 + 1) * w + (ox * 2 + 1)];
 
-                int8_t max_val = std::max({v00, v01, v10, v11});
-                output[ch * out_h * out_w + oy * out_w + ox] = max_val;
+                output[ch * out_h * out_w + oy * out_w + ox] = std::max({v00, v01, v10, v11});
             }
         }
     }
@@ -319,8 +266,6 @@ void maxpool_2x2_stride2(const int8_t* input, int h, int w, int c,
 
 void maxpool_2x2_stride1(const int8_t* input, int h, int w, int c,
                          int8_t* output) {
-    // Stride-1 maxpool with zero-padding (right and bottom)
-    // Output same size as input
     for (int ch = 0; ch < c; ch++) {
         for (int oy = 0; oy < h; oy++) {
             for (int ox = 0; ox < w; ox++) {
@@ -329,19 +274,13 @@ void maxpool_2x2_stride1(const int8_t* input, int h, int w, int c,
                 int8_t v10 = (oy + 1 < h) ? input[ch * h * w + (oy + 1) * w + ox] : -128;
                 int8_t v11 = (ox + 1 < w && oy + 1 < h) ? input[ch * h * w + (oy + 1) * w + (ox + 1)] : -128;
 
-                int8_t max_val = std::max({v00, v01, v10, v11});
-                output[ch * h * w + oy * w + ox] = max_val;
+                output[ch * h * w + oy * w + ox] = std::max({v00, v01, v10, v11});
             }
         }
     }
 }
 
-// ============================================================================
-// Upsample and Concatenation
-// ============================================================================
-void upsample_2x(const int8_t* input, int h, int w, int c,
-                 int8_t* output) {
-    // Nearest neighbor 2x upsampling
+void upsample_2x(const int8_t* input, int h, int w, int c, int8_t* output) {
     for (int ch = 0; ch < c; ch++) {
         for (int iy = 0; iy < h; iy++) {
             for (int ix = 0; ix < w; ix++) {
@@ -357,36 +296,28 @@ void upsample_2x(const int8_t* input, int h, int w, int c,
     }
 }
 
+// NCHW concat: copy a planes then b planes
 void concat_channels(const int8_t* a, int ca, const int8_t* b, int cb,
                      int h, int w, int8_t* output) {
-    // Concatenate along channel dimension (NCHW format)
-    // Copy a first
     std::memcpy(output, a, ca * h * w);
-    // Then b
     std::memcpy(output + ca * h * w, b, cb * h * w);
 }
 
-// ============================================================================
-// Full Inference
-// ============================================================================
 struct InferenceResult {
     std::vector<int8_t> head1;  // 13x13x255 (layer 9)
     std::vector<int8_t> head2;  // 26x26x255 (layer 12)
 };
 
 InferenceResult run_inference(const std::vector<int8_t>& input, const ModelWeights& model) {
-    // Layer buffers (double-buffered)
     std::vector<int8_t> buf_a, buf_b;
     std::vector<int8_t>* current_input = nullptr;
     std::vector<int8_t>* current_output = nullptr;
 
-    // Special storage
-    std::vector<int8_t> layer4_conv_output;  // Pre-maxpool output for concat
-    std::vector<int8_t> layer7_output;       // Route source for layer 10
+    std::vector<int8_t> layer4_conv_output;
+    std::vector<int8_t> layer7_output;
 
     InferenceResult result;
 
-    // Initialize with input
     buf_a = input;
     current_input = &buf_a;
     current_output = &buf_b;
@@ -402,16 +333,11 @@ InferenceResult run_inference(const std::vector<int8_t>& input, const ModelWeigh
         int kernel = cfg.kernel;
         int pad = cfg.pad;
 
-        // Conv output size (before maxpool) - same as input for stride-1 conv with padding
-
-        // Handle special layer inputs
         if (layer_idx == 10) {
-            // Route: use layer 7 output
             current_input = &layer7_output;
             in_h = 13;
             in_w = 13;
         } else if (layer_idx == 11) {
-            // Concat: upsample layer 10 output + layer 4 conv output
             std::vector<int8_t> upsampled(128 * 26 * 26);
             upsample_2x(current_output->data(), 13, 13, 128, upsampled.data());
 
@@ -424,31 +350,26 @@ InferenceResult run_inference(const std::vector<int8_t>& input, const ModelWeigh
             in_c = 384;
         }
 
-        // Allocate output buffer
         int final_out_h = cfg.out_h;
         int final_out_w = cfg.out_w;
         current_output->resize(out_c * final_out_h * final_out_w);
 
-        // For layer 4, we need conv output before maxpool
         bool save_conv_output = (layer_idx == 4);
         std::vector<int8_t> conv_output;
         if (save_conv_output) {
             conv_output.resize(out_c * in_h * in_w);
         }
 
-        // Run convolution
         int8_t* conv_dst = save_conv_output ? conv_output.data() : current_output->data();
         int conv_dst_h = save_conv_output ? in_h : final_out_h;
         int conv_dst_w = save_conv_output ? in_w : final_out_w;
 
         if (cfg.maxpool_stride == 0 || save_conv_output) {
-            // No maxpool or saving pre-pool output
             conv2d(current_input->data(), in_h, in_w, in_c,
                    lw.weights.data(), lw.biases.data(),
                    out_c, kernel, pad, lw.M, lw.n, lw.use_relu,
                    conv_dst, conv_dst_h, conv_dst_w);
         } else {
-            // Conv then maxpool in pipeline
             std::vector<int8_t> temp_conv(out_c * in_h * in_w);
             conv2d(current_input->data(), in_h, in_w, in_c,
                    lw.weights.data(), lw.biases.data(),
@@ -464,35 +385,23 @@ InferenceResult run_inference(const std::vector<int8_t>& input, const ModelWeigh
             }
         }
 
-        // Handle layer 4 special case: save conv output and apply maxpool
         if (save_conv_output) {
             layer4_conv_output = conv_output;
             maxpool_2x2_stride2(conv_output.data(), in_h, in_w, out_c,
                                current_output->data());
         }
 
-        // Save layer 7 output for route
-        if (layer_idx == 7) {
-            layer7_output = *current_output;
-        }
+        if (layer_idx == 7) layer7_output = *current_output;
+        if (layer_idx == 9) result.head1 = *current_output;
+        else if (layer_idx == 12) result.head2 = *current_output;
 
-        // Save detection head outputs
-        if (layer_idx == 9) {
-            result.head1 = *current_output;
-        } else if (layer_idx == 12) {
-            result.head2 = *current_output;
-        }
-
-        // Swap buffers for next layer
         std::swap(current_input, current_output);
     }
 
     return result;
 }
 
-// ============================================================================
-// Convert NCHW output to NHWC for postprocessing
-// ============================================================================
+// Convert NCHW to NHWC for postprocessing
 std::vector<uint8_t> nchw_to_nhwc(const std::vector<int8_t>& nchw, int h, int w, int c) {
     std::vector<uint8_t> nhwc(h * w * c);
     for (int y = 0; y < h; y++) {
@@ -505,22 +414,12 @@ std::vector<uint8_t> nchw_to_nhwc(const std::vector<int8_t>& nchw, int h, int w,
     return nhwc;
 }
 
-// ============================================================================
-// Main
-// ============================================================================
 int main(int argc, char* argv[]) {
     if (argc < 3) {
         std::cerr << "Usage: " << argv[0] << " <weights_dir> <image_path> [--benchmark N]" << std::endl;
-        std::cerr << std::endl;
-        std::cerr << "  weights_dir: Directory with exported weights (from export_weights_for_cpu.py)" << std::endl;
+        std::cerr << "\n  weights_dir: Directory with exported weights (from export_weights_for_cpu.py)" << std::endl;
         std::cerr << "  image_path:  Input image (JPEG/PNG)" << std::endl;
         std::cerr << "  --benchmark N: Run N iterations and report average time" << std::endl;
-        std::cerr << std::endl;
-        std::cerr << "Example:" << std::endl;
-        std::cerr << "  # First export weights:" << std::endl;
-        std::cerr << "  python3 export_weights_for_cpu.py ../sim/hardware-ai/quantized_params.npz ./weights_cpu" << std::endl;
-        std::cerr << "  # Then run inference:" << std::endl;
-        std::cerr << "  ./" << argv[0] << " ./weights_cpu test.jpg" << std::endl;
         return 1;
     }
 
@@ -551,7 +450,6 @@ int main(int argc, char* argv[]) {
     std::cout << std::endl;
 
     try {
-        // Load model weights
         ModelWeights model;
         auto load_start = std::chrono::high_resolution_clock::now();
         load_model_weights(weights_dir, model);
@@ -559,14 +457,12 @@ int main(int argc, char* argv[]) {
         auto load_ms = std::chrono::duration_cast<std::chrono::milliseconds>(load_end - load_start).count();
         std::cout << "  Weight loading: " << load_ms << " ms" << std::endl;
 
-        // Load and preprocess image
         auto preproc_start = std::chrono::high_resolution_clock::now();
         std::vector<int8_t> input = load_and_preprocess_image(image_path);
         auto preproc_end = std::chrono::high_resolution_clock::now();
         auto preproc_ms = std::chrono::duration_cast<std::chrono::milliseconds>(preproc_end - preproc_start).count();
         std::cout << "  Preprocessing: " << preproc_ms << " ms" << std::endl;
 
-        // Run inference
         std::cout << "\nRunning inference..." << std::endl;
 
         InferenceResult result;
@@ -586,7 +482,6 @@ int main(int argc, char* argv[]) {
         }
 
         if (benchmark_iters > 0) {
-            // Compute statistics
             long total = 0, min_t = iter_times[0], max_t = iter_times[0];
             for (long t : iter_times) {
                 total += t;
@@ -603,11 +498,9 @@ int main(int argc, char* argv[]) {
             std::cout << "  FPS:     " << std::fixed << std::setprecision(2) << fps << std::endl;
         }
 
-        // Convert NCHW to NHWC for postprocessing
         std::vector<uint8_t> head1_nhwc = nchw_to_nhwc(result.head1, 13, 13, 255);
         std::vector<uint8_t> head2_nhwc = nchw_to_nhwc(result.head2, 26, 26, 255);
 
-        // Post-processing
         auto postproc_start = std::chrono::high_resolution_clock::now();
         std::vector<BBox> detections = yolo_postprocess(
             head1_nhwc.data(),

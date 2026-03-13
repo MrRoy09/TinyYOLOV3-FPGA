@@ -1,9 +1,6 @@
 /*
  * yolo_inference.cpp - Standalone TinyYOLOv3 Inference
  *
- * Loads image and weights directly, runs full inference on FPGA.
- * No pre-generated stimulus files needed.
- *
  * Build: make yolo_inference TARGET=hw
  * Run:   ./yolo_inference <xclbin_file> <weights_dir> <image_path>
  */
@@ -19,12 +16,10 @@
 #include <cmath>
 #include <sstream>
 
-// OpenCV for fast image preprocessing (NEON-accelerated on ARM)
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
-// NEON intrinsics for fast interleaving on ARM
 #ifdef __ARM_NEON
 #include <arm_neon.h>
 #endif
@@ -39,24 +34,17 @@
 
 #include "yolo_postprocess.hpp"
 
-// ============================================================================
-// NEON-optimized batch interleave for OG outputs
-// Converts from [OG0: all pixels][OG1: all pixels]... to NHWC [pixel: all channels]
-// ============================================================================
 void neon_batch_interleave(const std::vector<std::vector<uint8_t>>& og_outputs,
                            uint8_t* dst, int num_pixels, int num_ogs, int cout) {
 #ifdef __ARM_NEON
     if (num_ogs == 2 && cout == 16) {
-        // Special case: 2 OGs, 16 channels - simple NEON load/store
         const uint8_t* src0 = og_outputs[0].data();
         const uint8_t* src1 = og_outputs[1].data();
         for (int p = 0; p < num_pixels; p++) {
-            // Load 8 bytes from each OG, store interleaved (16 bytes per pixel)
             vst1_u8(dst + p * 16, vld1_u8(src0 + p * 8));
             vst1_u8(dst + p * 16 + 8, vld1_u8(src1 + p * 8));
         }
     } else if (num_ogs == 4 && cout == 32) {
-        // 4 OGs, 32 channels
         const uint8_t* src0 = og_outputs[0].data();
         const uint8_t* src1 = og_outputs[1].data();
         const uint8_t* src2 = og_outputs[2].data();
@@ -68,7 +56,6 @@ void neon_batch_interleave(const std::vector<std::vector<uint8_t>>& og_outputs,
             vst1_u8(dst + p * 32 + 24, vld1_u8(src3 + p * 8));
         }
     } else {
-        // General case: sequential NEON loads/stores
         for (int p = 0; p < num_pixels; p++) {
             uint8_t* pixel_dst = dst + p * cout;
             for (int og = 0; og < num_ogs; og++) {
@@ -82,7 +69,6 @@ void neon_batch_interleave(const std::vector<std::vector<uint8_t>>& og_outputs,
         }
     }
 #else
-    // Fallback for non-ARM: simple copy
     for (int p = 0; p < num_pixels; p++) {
         uint8_t* pixel_dst = dst + p * cout;
         for (int og = 0; og < num_ogs; og++) {
@@ -125,8 +111,10 @@ const LayerConfig LAYERS[] = {
 };
 const int NUM_LAYERS = sizeof(LAYERS) / sizeof(LAYERS[0]);
 
-// Global flags
-bool g_no_batch = false;  // Disable batching: process 1 OG per kernel call
+bool g_no_batch = false;
+bool g_optimal_batch = false;
+
+const int OPTIMAL_BATCH[13] = {2, 4, 8, 16, 32, 64, 64, 32, 64, 32, 16, 32, 32};
 
 std::vector<uint8_t> read_binary_file(const std::string& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -140,10 +128,8 @@ std::vector<uint8_t> read_binary_file(const std::string& path) {
     return data;
 }
 
-// Load and preprocess image to 416x416 INT8 NHWC format with padding
-// Uses OpenCV for fast NEON-accelerated resize
+// Normalize [0,255] to INT8 [0,127], pad channels 3→8, add 1-pixel zero border
 std::vector<uint8_t> load_and_preprocess_image(const std::string& path, int target_size = 416) {
-    // Load image with OpenCV (BGR format)
     cv::Mat img = cv::imread(path, cv::IMREAD_COLOR);
     if (img.empty()) {
         throw std::runtime_error("Cannot load image: " + path);
@@ -151,32 +137,23 @@ std::vector<uint8_t> load_and_preprocess_image(const std::string& path, int targ
 
     std::cout << "Loaded image: " << img.cols << "x" << img.rows << "x" << img.channels() << std::endl;
 
-    // Resize using OpenCV (NEON-accelerated on ARM)
     cv::Mat resized;
     cv::resize(img, resized, cv::Size(target_size, target_size), 0, 0, cv::INTER_LINEAR);
 
-    // Convert BGR to RGB
     cv::Mat rgb;
     cv::cvtColor(resized, rgb, cv::COLOR_BGR2RGB);
 
-    // Normalize to [0, 1] and quantize to INT8 with scale=127
-    // Optimized: use integer math instead of float (val * 127 / 255 ≈ val / 2)
-    // More precise: (val * 127 + 127) / 255 with rounding
-    // Output format: NHWC with 1-pixel zero padding (418x418x8)
     int padded_size = target_size + 2;
-    int cin_pad = 8;  // Pad channels from 3 to 8
+    int cin_pad = 8;
     std::vector<uint8_t> output(padded_size * padded_size * cin_pad, 0);
 
     for (int y = 0; y < target_size; y++) {
         const uint8_t* row = rgb.ptr<uint8_t>(y);
         uint8_t* dst_row = output.data() + ((y + 1) * padded_size + 1) * cin_pad;
         for (int x = 0; x < target_size; x++) {
-            // Integer quantization: (pixel * 127 + 127) / 255
-            // Approximation: (pixel + 1) >> 1 is close to pixel * 127 / 255
             dst_row[0] = (row[0] + 1) >> 1;  // R
             dst_row[1] = (row[1] + 1) >> 1;  // G
             dst_row[2] = (row[2] + 1) >> 1;  // B
-            // Channels 3-7 stay zero (already initialized)
             row += 3;
             dst_row += cin_pad;
         }
@@ -201,16 +178,10 @@ void pad_spatial(const std::vector<uint8_t>& input, int h, int w, int c,
     }
 }
 
-// Pad spatial dimensions for stride-1 maxpool
-// The RTL uses backward-looking maxpool: output[r][c] = max(input[r-1:r+1, c-1:c+1])
-// It skips row 0 and col 0, and replaces the last row/col with -128.
-// So for HxH final output, we need (H+1)x(H+1) conv output.
-// For 3x3 conv to produce (H+1)x(H+1), we need (H+3)x(H+3) padded input.
+// Stride-1 maxpool: RTL skips row 0/col 0 of conv output.
+// Pad to (H+3)x(W+3) so conv produces (H+1)x(W+1), maxpool yields HxH.
 void pad_spatial_stride1(const std::vector<uint8_t>& input, int h, int w, int c,
                          std::vector<uint8_t>& output) {
-    // For stride-1 maxpool:
-    // - Pad to (H+3)x(W+3) for conv to produce (H+1)x(W+1)
-    // - Maxpool skips row 0/col 0, producing HxH output
     int padded_h = h + 3;
     int padded_w = w + 3;
     output.resize(padded_h * padded_w * c, 0);
@@ -226,7 +197,6 @@ void pad_spatial_stride1(const std::vector<uint8_t>& input, int h, int w, int c,
 }
 
 void cpu_maxpool_stride1(const uint8_t* input, uint8_t* output, int h, int w, int c) {
-    // Simple version - the maxpool is called per-OG (c=8), so not a huge cost
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             for (int ch = 0; ch < c; ch++) {
@@ -292,8 +262,6 @@ void cpu_concat_channels(const uint8_t* a, int ca, const uint8_t* b, int cb,
     }
 }
 
-// Pre-allocated buffers for inference (allocated once, reused across layers)
-// Sized for multi-OG batching: largest batch is Layer 6 (64 OGs @ 64 ci_groups)
 struct InferenceBuffers {
     xrt::bo weight_bo;
     xrt::bo bias_bo;
@@ -310,11 +278,9 @@ struct InferenceBuffers {
     bool initialized = false;
 };
 
-// Pre-loaded weights and biases (loaded once at startup)
 struct PreloadedWeights {
-    // weights[layer][og] = vector of weight data
-    std::vector<std::vector<std::vector<uint8_t>>> weights;
-    std::vector<std::vector<std::vector<uint8_t>>> biases;
+    std::vector<std::vector<std::vector<uint8_t>>> weights;  // [layer][og]
+    std::vector<std::vector<std::vector<uint8_t>>> biases;   // [layer][og]
     bool loaded = false;
 };
 
@@ -347,17 +313,10 @@ void preload_all_weights(const std::string& weights_dir, PreloadedWeights& pw) {
 }
 
 void init_buffers(xrt::device& device, xrt::kernel& kernel, InferenceBuffers& bufs) {
-    // Allocate for multi-OG batching
-    // URAM depth=4096, max_og_per_chunk = 4096/ci_groups
-    // Layer 6: ci_groups=64 → max 64 OGs per chunk
-    // Weight per OG = ci_groups * 8 * 8 * 16 bytes
-    // Largest: Layer 6 = 64 OGs × 64 × 8 × 8 × 16 = 4MB weights
-    bufs.weight_buf_size = 8 * 1024 * 1024;   // 8MB (enough for 128 OGs at any ci_groups)
-    bufs.bias_buf_size = 128 * 32;            // 4KB (128 OGs × 32 bytes each)
-    bufs.pixel_buf_size = 2 * 1024 * 1024;    // 2MB (enough for 418*418*8)
-    // Output: Layer 0 is largest at 208×208×8 per OG × 2 OGs = 692KB
-    // Layer 6: 13×13×8 × 64 OGs = 87KB (smaller)
-    bufs.output_buf_size = 2 * 1024 * 1024;   // 2MB (generous for all batch sizes)
+    bufs.weight_buf_size = 8 * 1024 * 1024;   // 8MB
+    bufs.bias_buf_size = 128 * 32;             // 4KB
+    bufs.pixel_buf_size = 2 * 1024 * 1024;    // 2MB
+    bufs.output_buf_size = 2 * 1024 * 1024;   // 2MB
 
     bufs.weight_bo = xrt::bo(device, bufs.weight_buf_size, kernel.group_id(19));
     bufs.bias_bo = xrt::bo(device, bufs.bias_buf_size, kernel.group_id(20));
@@ -375,28 +334,29 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
                const std::vector<uint8_t>& pixels, std::vector<uint8_t>& layer_output,
                int layer_idx, InferenceBuffers& bufs, PreloadedWeights& pw) {
 
-    // =========================================================================
-    // Multi-OG Batching: Process multiple OGs in single kernel invocation
-    // URAM depth = 4096. Each OG needs ci_groups addresses.
-    // max_og_per_chunk = 4096 / ci_groups
-    // With --no-batch flag: force 1 OG per kernel call (for debugging)
-    // =========================================================================
-    int max_og_per_chunk = g_no_batch ? 1 : (4096 / cfg.ci_groups);
+    // URAM depth=4096, each OG needs ci_groups addresses
+    int auto_max = 4096 / cfg.ci_groups;
+    int max_og_per_chunk;
+    if (g_no_batch)
+        max_og_per_chunk = 1;
+    else if (g_optimal_batch && layer_idx < 13 && OPTIMAL_BATCH[layer_idx] > 0)
+        max_og_per_chunk = std::min(OPTIMAL_BATCH[layer_idx], auto_max);
+    else
+        max_og_per_chunk = auto_max;
     int num_chunks = (cfg.co_groups + max_og_per_chunk - 1) / max_og_per_chunk;
 
-    // Actual padded size for stride-1
     int actual_padded_h = (cfg.maxpool_stride == 1) ? (cfg.out_h + 3) : cfg.padded_h;
     int actual_padded_w = (cfg.maxpool_stride == 1) ? (cfg.out_w + 3) : cfg.padded_w;
 
     size_t pixel_bytes = actual_padded_h * actual_padded_w * cfg.cin_pad;
-    size_t weight_bytes_per_og = cfg.ci_groups * 8 * 8 * 16;  // ci_groups * 8 banks * 8 urams * 16 bytes
-    size_t output_bytes_per_og = cfg.out_h * cfg.out_w * 8;   // 8 channels per OG
+    size_t weight_bytes_per_og = cfg.ci_groups * 8 * 8 * 16;  // ci_groups * 8banks * 8urams * 16B
+    size_t output_bytes_per_og = cfg.out_h * cfg.out_w * 8;
+    size_t output_stride_per_og = ((output_bytes_per_og + 4095) / 4096) * 4096;  // 4K aligned
     int num_pixels = cfg.out_h * cfg.out_w;
 
-    // Copy pixels once (same for all OGs - re-read from DDR for each OG)
     auto dma_start = std::chrono::high_resolution_clock::now();
     std::memcpy(bufs.pixel_ptr, pixels.data(), std::min(pixels.size(), pixel_bytes));
-    bufs.pixel_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    bufs.pixel_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, pixel_bytes, 0);
     auto dma_end = std::chrono::high_resolution_clock::now();
 
     if (layer_idx <= 2) {
@@ -408,60 +368,49 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
 
     layer_output.resize(cfg.out_h * cfg.out_w * cfg.cout);
 
-    // Storage for all OG outputs (for batch interleaving at the end)
     std::vector<std::vector<uint8_t>> og_outputs(cfg.co_groups);
 
-    // Process chunks (most layers fit in 1 chunk, Layer 6 needs 2)
     for (int chunk = 0; chunk < num_chunks; chunk++) {
         int chunk_start_og = chunk * max_og_per_chunk;
         int ogs_in_chunk = std::min(max_og_per_chunk, cfg.co_groups - chunk_start_og);
 
         auto chunk_start = std::chrono::high_resolution_clock::now();
 
-        // Pack all OG weights and biases into contiguous buffers
         for (int og_in_chunk = 0; og_in_chunk < ogs_in_chunk; og_in_chunk++) {
             int global_og = chunk_start_og + og_in_chunk;
 
-            // Use preloaded weights from memory (no file I/O!)
             const auto& weights = pw.weights[layer_idx][global_og];
             const auto& biases = pw.biases[layer_idx][global_og];
 
-            // Pack weights at offset og_in_chunk * weight_bytes_per_og
             std::memcpy(bufs.weight_ptr + og_in_chunk * weight_bytes_per_og,
                        weights.data(),
                        std::min(weights.size(), weight_bytes_per_og));
 
-            // Pack biases at offset og_in_chunk * 32 (32 bytes per OG = 2 x 128-bit words)
             std::memcpy(bufs.bias_ptr + og_in_chunk * 32,
                        biases.data(),
                        std::min(biases.size(), static_cast<size_t>(32)));
         }
 
-        // Sync packed data to device
-        bufs.weight_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-        bufs.bias_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+        size_t actual_weight_bytes = static_cast<size_t>(ogs_in_chunk) * weight_bytes_per_og;
+        size_t actual_bias_bytes = static_cast<size_t>(ogs_in_chunk) * 32;
+        bufs.weight_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, actual_weight_bytes, 0);
+        bufs.bias_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, actual_bias_bytes, 0);
 
-        // Configure kernel for batched execution
         xrt::run run(kernel);
         run.set_arg(0, bufs.weight_bo.address());
         run.set_arg(1, bufs.bias_bo.address());
         run.set_arg(2, bufs.pixel_bo.address());
         run.set_arg(3, bufs.output_bo.address());
-
-        // Per-OG sizes (RTL uses these as strides for address calculation)
-        run.set_arg(4, static_cast<uint32_t>(weight_bytes_per_og));  // Bytes per OG for weights
-        run.set_arg(5, static_cast<uint32_t>(32));                   // Bytes per OG for biases
-        run.set_arg(6, static_cast<uint32_t>(pixel_bytes));          // Total pixel bytes (same for all OGs)
-        run.set_arg(7, static_cast<uint32_t>(output_bytes_per_og));  // Bytes per OG for output
-
+        run.set_arg(4, static_cast<uint32_t>(weight_bytes_per_og));
+        run.set_arg(5, static_cast<uint32_t>(32));
+        run.set_arg(6, static_cast<uint32_t>(pixel_bytes));
+        run.set_arg(7, static_cast<uint32_t>(output_bytes_per_og));
         run.set_arg(8, static_cast<uint32_t>(cfg.ci_groups));
-        // cfg_co_groups = number of OGs to process in this chunk (batched mode)
         run.set_arg(9, static_cast<uint32_t>(ogs_in_chunk));
-        run.set_arg(10, static_cast<uint32_t>(0));  // wt_base_addr always 0
+        run.set_arg(10, static_cast<uint32_t>(0));
         run.set_arg(11, static_cast<uint32_t>(cfg.cin_pad));
         run.set_arg(12, static_cast<uint32_t>(actual_padded_w));
 
-        // Maxpool config
         bool enable_hw_maxpool = (cfg.maxpool_stride != 0);
         run.set_arg(13, static_cast<uint32_t>(enable_hw_maxpool ? 1 : 0));
         run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0));
@@ -474,21 +423,18 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         run.set_arg(21, bufs.pixel_bo);
         run.set_arg(22, bufs.output_bo);
 
-        // Execute single kernel call for all OGs in chunk
         auto compute_start = std::chrono::high_resolution_clock::now();
         run.start();
-        run.wait(std::chrono::seconds(300));  // Longer timeout for batched ops
+        run.wait(std::chrono::seconds(300));
         auto compute_end = std::chrono::high_resolution_clock::now();
 
-        // Sync all outputs at once
-        bufs.output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+        size_t actual_output_bytes = static_cast<size_t>(ogs_in_chunk) * output_stride_per_og;
+        bufs.output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE, actual_output_bytes, 0);
 
-        // Unpack outputs for each OG in this chunk
         for (int og_in_chunk = 0; og_in_chunk < ogs_in_chunk; og_in_chunk++) {
             int global_og = chunk_start_og + og_in_chunk;
-            const uint8_t* og_output_ptr = bufs.output_ptr + og_in_chunk * output_bytes_per_og;
+            const uint8_t* og_output_ptr = bufs.output_ptr + og_in_chunk * output_stride_per_og;
 
-            // Store OG output for batch interleaving later
             og_outputs[global_og].resize(num_pixels * 8);
             std::memcpy(og_outputs[global_og].data(), og_output_ptr, num_pixels * 8);
         }
@@ -503,10 +449,8 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         }
     }
 
-    // Batch interleave all OG outputs into NHWC format using NEON
     auto interleave_start = std::chrono::high_resolution_clock::now();
     if (cfg.cout <= 8) {
-        // Single OG: direct copy, no interleaving needed
         std::memcpy(layer_output.data(), og_outputs[0].data(), num_pixels * std::min(8, cfg.cout));
     } else {
         neon_batch_interleave(og_outputs, layer_output.data(), num_pixels, cfg.co_groups, cfg.cout);
@@ -523,8 +467,8 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
 int main(int argc, char* argv[]) {
     if (argc < 4) {
         std::cerr << "Usage: " << argv[0] << " <xclbin_file> <weights_dir> <image_path> [--no-batch]" << std::endl;
-        std::cerr << "  weights_dir: directory containing layer0/, layer1/, ... with weights_og*.bin files" << std::endl;
-        std::cerr << "  --no-batch: disable multi-OG batching (1 OG per kernel call)" << std::endl;
+        std::cerr << "  --no-batch      : disable multi-OG batching (1 OG per kernel call)" << std::endl;
+        std::cerr << "  --optimal-batch : use per-layer optimal batch limits" << std::endl;
         return 1;
     }
 
@@ -532,10 +476,11 @@ int main(int argc, char* argv[]) {
     std::string weights_dir = argv[2];
     std::string image_path = argv[3];
 
-    // Parse optional flags
     for (int i = 4; i < argc; i++) {
         if (std::string(argv[i]) == "--no-batch") {
             g_no_batch = true;
+        } else if (std::string(argv[i]) == "--optimal-batch") {
+            g_optimal_batch = true;
         }
     }
 
@@ -543,12 +488,14 @@ int main(int argc, char* argv[]) {
     if (g_no_batch) {
         std::cout << "  NO-BATCH MODE: 1 OG per kernel call" << std::endl;
     }
+    if (g_optimal_batch) {
+        std::cout << "  OPTIMAL-BATCH MODE: per-layer limits" << std::endl;
+    }
     std::cout << "  XCLBIN: " << xclbin_file << std::endl;
     std::cout << "  Weights: " << weights_dir << std::endl;
     std::cout << "  Image: " << image_path << std::endl;
 
     try {
-        // Load and preprocess image
         std::cout << "\nPreprocessing image..." << std::endl;
         auto preprocess_start = std::chrono::high_resolution_clock::now();
         std::vector<uint8_t> input_pixels = load_and_preprocess_image(image_path);
@@ -556,22 +503,18 @@ int main(int argc, char* argv[]) {
         auto preprocess_ms = std::chrono::duration_cast<std::chrono::milliseconds>(preprocess_end - preprocess_start).count();
         std::cout << "Preprocessing: " << preprocess_ms << " ms" << std::endl;
 
-        // Initialize XRT
         std::cout << "\nInitializing FPGA..." << std::endl;
         xrt::device device(0);
         auto uuid = device.load_xclbin(xclbin_file);
         xrt::kernel kernel(device, uuid, "TinyYOLOV3_HW_Complete");
 
-        // Pre-allocate buffers (done once)
         InferenceBuffers bufs;
         init_buffers(device, kernel, bufs);
         std::cout << "FPGA ready (buffers pre-allocated)" << std::endl;
 
-        // Preload all weights into memory (done once)
         PreloadedWeights pw;
         preload_all_weights(weights_dir, pw);
 
-        // Run inference
         std::cout << "\nRunning inference..." << std::endl;
         auto infer_start = std::chrono::high_resolution_clock::now();
 
@@ -611,7 +554,6 @@ int main(int argc, char* argv[]) {
                 if (cfg.kernel_1x1) {
                     pixels = layer_output;
                 } else if (cfg.maxpool_stride == 1) {
-                    // Stride-1 maxpool: pad to (H+3)x(W+3) for HW maxpool
                     pad_spatial_stride1(layer_output, prev_h, prev_w, prev_c, pixels);
                 } else {
                     pad_spatial(layer_output, prev_h, prev_w, prev_c, pixels);
@@ -619,35 +561,24 @@ int main(int argc, char* argv[]) {
             }
 
             if (i == 4) {
-                // Special handling for layer 4: run without HW maxpool, save conv output, then CPU maxpool
-                // Create modified config with no maxpool
+                // Run without HW maxpool, save conv output for layer 11 concat, then CPU maxpool
                 LayerConfig cfg_no_mp = cfg;
                 cfg_no_mp.maxpool_stride = 0;
-                cfg_no_mp.out_h = 26;  // Conv output before maxpool
+                cfg_no_mp.out_h = 26;
                 cfg_no_mp.out_w = 26;
 
-                // Run layer 4 without maxpool
                 run_layer(device, kernel, cfg_no_mp, pixels, layer_output, i, bufs, pw);
-
-                // Save conv output for concat at layer 11
                 layer4_conv_output = layer_output;
 
-                // Apply CPU stride-2 maxpool to get 13x13 output for layer 5
                 std::vector<uint8_t> pooled_output(13 * 13 * 256);
                 cpu_maxpool_stride2(layer_output.data(), pooled_output.data(), 26, 26, 256);
                 layer_output = pooled_output;
             } else {
                 run_layer(device, kernel, cfg, pixels, layer_output, i, bufs, pw);
             }
-            if (i == 7) {
-                layer7_output = layer_output;
-            }
-            if (i == 9) {
-                layer9_output = layer_output;
-            }
-            if (i == 12) {
-                layer12_output = layer_output;
-            }
+            if (i == 7) layer7_output = layer_output;
+            if (i == 9) layer9_output = layer_output;
+            if (i == 12) layer12_output = layer_output;
 
             auto layer_end = std::chrono::high_resolution_clock::now();
             layer_times[i] = std::chrono::duration_cast<std::chrono::milliseconds>(layer_end - layer_start).count();
@@ -658,7 +589,6 @@ int main(int argc, char* argv[]) {
 
         std::cout << "\n=== Inference Complete: " << infer_ms << " ms ===" << std::endl;
 
-        // Per-layer timing breakdown
         std::cout << "\nPer-layer timing:" << std::endl;
         std::cout << "Layer | Cin→Cout | OGs | Time(ms) | ms/OG" << std::endl;
         std::cout << "------+----------+-----+----------+------" << std::endl;
@@ -674,7 +604,6 @@ int main(int argc, char* argv[]) {
         }
         std::cout << "------+----------+-----+----------+------" << std::endl;
 
-        // Post-processing
         auto postproc_start = std::chrono::high_resolution_clock::now();
         std::vector<BBox> detections = yolo_postprocess(
             layer9_output.data(),

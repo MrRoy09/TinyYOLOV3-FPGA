@@ -16,18 +16,25 @@ CXX := g++
 CXXFLAGS := -std=c++17 -O2 -g -Wall
 
 # XRT paths (only used for FPGA targets)
+# Detect XRT: prefer XILINX_XRT env var, fallback to system-wide install (Kria)
 ifdef XILINX_XRT
     XRT_INCLUDES := -I$(XILINX_XRT)/include
     XRT_LDFLAGS := -L$(XILINX_XRT)/lib
     XRT_LDLIBS := -lxrt_coreutil -luuid -lpthread
+else ifneq ($(wildcard /usr/include/xrt/xrt/xrt_bo.h),)
+    # System-wide XRT (e.g. Kria Ubuntu packages) — headers under /usr/include/xrt/
+    XRT_INCLUDES := -I/usr/include/xrt
+    XRT_LDFLAGS :=
+    XRT_LDLIBS := -lxrt_coreutil -luuid -lpthread
+    XILINX_XRT := system
 else
     XRT_INCLUDES :=
     XRT_LDFLAGS :=
     XRT_LDLIBS :=
 endif
 
-# OpenCV flags
-OPENCV_CFLAGS := $(shell pkg-config --cflags opencv4 2>/dev/null || echo "")
+# OpenCV flags — try pkg-config first, fallback to known paths
+OPENCV_CFLAGS := $(shell pkg-config --cflags opencv4 2>/dev/null || echo "-I/usr/include/opencv4")
 OPENCV_LIBS := $(shell pkg-config --libs opencv4 2>/dev/null || echo "-lopencv_core -lopencv_imgcodecs -lopencv_imgproc")
 
 # Target lists
@@ -55,7 +62,7 @@ fpga: check_xrt $(FPGA_TARGETS)
 
 check_xrt:
 ifndef XILINX_XRT
-	$(error XILINX_XRT is not set. Source XRT setup script: source /opt/xilinx/xrt/setup.sh)
+	$(error XRT not found. Set XILINX_XRT or install xrt package.)
 endif
 
 # ============================================================================
@@ -101,7 +108,7 @@ yolo_inference: yolo_inference.cpp stb_image.h yolo_postprocess.hpp
 	$(CXX) $(CXXFLAGS) $(XRT_INCLUDES) $(OPENCV_CFLAGS) -o $@ $< $(XRT_LDFLAGS) $(XRT_LDLIBS) $(OPENCV_LIBS)
 
 yolo_camera: yolo_camera.cpp yolo_postprocess.hpp
-	$(CXX) $(CXXFLAGS) $(XRT_INCLUDES) $(OPENCV_CFLAGS) -o $@ $< $(XRT_LDFLAGS) $(XRT_LDLIBS) $(OPENCV_LIBS) -lpthread
+	$(CXX) $(CXXFLAGS) $(XRT_INCLUDES) $(OPENCV_CFLAGS) -o $@ $< $(XRT_LDFLAGS) $(XRT_LDLIBS) $(OPENCV_LIBS) -lopencv_highgui -lopencv_videoio -lpthread
 
 # ============================================================================
 # Utility

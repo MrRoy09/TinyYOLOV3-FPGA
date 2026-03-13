@@ -25,9 +25,9 @@ logic [63:0] row0, row1, row2;
 always_ff @(posedge clk) begin
     if (rst) begin
         delay_depth_r     <= '0;
-        vectors_per_row_r <= '0;
-        total_delay_r     <= '0;
-        col_threshold_r   <= '0;
+        vectors_per_row_r <= 32'hFFFFFFFF;
+        total_delay_r     <= 32'hFFFFFFFF;
+        col_threshold_r   <= 32'hFFFFFFFF;
         lb0_width_r       <= '0;
     end else begin
         delay_depth_r     <= in_channels >> 3;
@@ -45,7 +45,9 @@ logic [31:0] col_cnt;
 logic        col_valid;
 
 always_ff @(posedge clk) begin
-    if (data_valid)
+    if (rst)
+        row2 <= '0;
+    else if (data_valid)
         row2 <= pixel_in;
 end
 

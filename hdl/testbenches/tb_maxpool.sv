@@ -410,6 +410,7 @@ module tb_maxpool;
     // Test 4: Reset behavior
     // ========================================================================
     task automatic test_reset();
+        int spurious;
         `TEST_CASE(4, "Reset clears internal state")
 
         // Initialize and start streaming
@@ -439,7 +440,7 @@ module tb_maxpool;
         repeat(3) @(posedge clk);
 
         // Verify no spurious outputs after reset
-        int spurious = 0;
+        spurious = 0;
         repeat(20) begin
             @(posedge clk);
             if (valid_out) spurious++;

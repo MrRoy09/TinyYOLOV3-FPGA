@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <cstdint>
 
-// COCO class names (80 classes)
 const char* COCO_CLASSES[] = {
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
     "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
@@ -30,35 +29,28 @@ const char* COCO_CLASSES[] = {
 };
 
 struct BBox {
-    float x, y, w, h;      // Center x, y, width, height (in pixels, 416x416 scale)
-    float confidence;       // Objectness * class_prob
+    float x, y, w, h;      // Center x, y, width, height (416x416 scale)
+    float confidence;       // objectness * class_prob
     int class_id;
     const char* class_name;
 };
 
-// TinyYOLOv3 anchors (width, height pairs)
-// 13x13 grid uses larger anchors (for detecting large objects)
+// TinyYOLOv3 anchors (width, height)
 const float ANCHORS_13x13[][2] = {{81, 82}, {135, 169}, {344, 319}};
-// 26x26 grid uses smaller anchors (for detecting small objects)
 const float ANCHORS_26x26[][2] = {{10, 14}, {23, 27}, {37, 58}};
 
-// Quantization scales from hardware_sim.py calibration
-// Detection Head 1 (Layer 9, 13x13): o_scale = 5.316
-// Detection Head 2 (Layer 12, 26x26): o_scale = 5.409
+// Dequantization scales from hardware_sim.py calibration
 const float DEQUANT_SCALE_13x13 = 5.3159403800964355f;
 const float DEQUANT_SCALE_26x26 = 5.409017562866211f;
 
-// Sigmoid function
 inline float sigmoid(float x) {
     return 1.0f / (1.0f + std::exp(-x));
 }
 
-// Dequantize INT8 to float using proper scale from quantization
 inline float dequant(int8_t val, float scale) {
     return static_cast<float>(val) / scale;
 }
 
-// Decode a single detection grid
 void decode_detections(const uint8_t* data, int grid_h, int grid_w,
                        const float anchors[][2], int num_anchors,
                        float dequant_scale, float conf_threshold, int img_size,
@@ -74,20 +66,16 @@ void decode_detections(const uint8_t* data, int grid_h, int grid_w,
             for (int a = 0; a < num_anchors; a++) {
                 int base_idx = (y * grid_w + x) * (num_anchors * box_attrs) + a * box_attrs;
 
-                // Get raw values (INT8) and dequantize
                 float tx = dequant(static_cast<int8_t>(data[base_idx + 0]), dequant_scale);
                 float ty = dequant(static_cast<int8_t>(data[base_idx + 1]), dequant_scale);
                 float tw = dequant(static_cast<int8_t>(data[base_idx + 2]), dequant_scale);
                 float th = dequant(static_cast<int8_t>(data[base_idx + 3]), dequant_scale);
                 float obj = dequant(static_cast<int8_t>(data[base_idx + 4]), dequant_scale);
 
-                // Apply sigmoid to objectness
                 float objectness = sigmoid(obj);
 
-                // Early skip if objectness too low
                 if (objectness < conf_threshold) continue;
 
-                // Find best class
                 int best_class = 0;
                 float best_class_score = -1e9f;
                 for (int c = 0; c < num_classes; c++) {
@@ -98,23 +86,16 @@ void decode_detections(const uint8_t* data, int grid_h, int grid_w,
                     }
                 }
 
-                // Apply sigmoid to class score
                 float class_prob = sigmoid(best_class_score);
                 float confidence = objectness * class_prob;
 
                 if (confidence < conf_threshold) continue;
 
-                // Decode box coordinates
-                float bx = (sigmoid(tx) + x) * stride;
-                float by = (sigmoid(ty) + y) * stride;
-                float bw = std::exp(tw) * anchors[a][0];
-                float bh = std::exp(th) * anchors[a][1];
-
                 BBox box;
-                box.x = bx;
-                box.y = by;
-                box.w = bw;
-                box.h = bh;
+                box.x = (sigmoid(tx) + x) * stride;
+                box.y = (sigmoid(ty) + y) * stride;
+                box.w = std::exp(tw) * anchors[a][0];
+                box.h = std::exp(th) * anchors[a][1];
                 box.confidence = confidence;
                 box.class_id = best_class;
                 box.class_name = COCO_CLASSES[best_class];
@@ -125,7 +106,6 @@ void decode_detections(const uint8_t* data, int grid_h, int grid_w,
     }
 }
 
-// Calculate IoU (Intersection over Union)
 float iou(const BBox& a, const BBox& b) {
     float a_x1 = a.x - a.w / 2, a_y1 = a.y - a.h / 2;
     float a_x2 = a.x + a.w / 2, a_y2 = a.y + a.h / 2;
@@ -148,9 +128,7 @@ float iou(const BBox& a, const BBox& b) {
     return inter_area / (union_area + 1e-6f);
 }
 
-// Non-Maximum Suppression
 std::vector<BBox> nms(std::vector<BBox>& detections, float iou_threshold) {
-    // Sort by confidence (descending)
     std::sort(detections.begin(), detections.end(),
               [](const BBox& a, const BBox& b) { return a.confidence > b.confidence; });
 
@@ -164,7 +142,6 @@ std::vector<BBox> nms(std::vector<BBox>& detections, float iou_threshold) {
 
         for (size_t j = i + 1; j < detections.size(); j++) {
             if (suppressed[j]) continue;
-            // Only suppress if same class
             if (detections[i].class_id == detections[j].class_id) {
                 if (iou(detections[i], detections[j]) > iou_threshold) {
                     suppressed[j] = true;
@@ -176,7 +153,6 @@ std::vector<BBox> nms(std::vector<BBox>& detections, float iou_threshold) {
     return result;
 }
 
-// Main post-processing function
 std::vector<BBox> yolo_postprocess(const uint8_t* det_head1,  // 13x13x255
                                     const uint8_t* det_head2,  // 26x26x255
                                     int img_size = 416,
@@ -185,21 +161,17 @@ std::vector<BBox> yolo_postprocess(const uint8_t* det_head1,  // 13x13x255
 
     std::vector<BBox> all_detections;
 
-    // Decode 13x13 grid (large objects) with proper dequantization scale
     decode_detections(det_head1, 13, 13, ANCHORS_13x13, 3,
                       DEQUANT_SCALE_13x13, conf_threshold, img_size, all_detections);
 
-    // Decode 26x26 grid (small objects) with proper dequantization scale
     decode_detections(det_head2, 26, 26, ANCHORS_26x26, 3,
                       DEQUANT_SCALE_26x26, conf_threshold, img_size, all_detections);
 
-    // Apply NMS
     std::vector<BBox> final_detections = nms(all_detections, nms_threshold);
 
     return final_detections;
 }
 
-// Print detections
 void print_detections(const std::vector<BBox>& detections) {
     std::cout << "\nDetections (" << detections.size() << " objects):" << std::endl;
     std::cout << "--------------------------------------------" << std::endl;

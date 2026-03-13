@@ -32,7 +32,7 @@ always_ff @(posedge clk) begin
         use_relu_pipe <= {use_relu_pipe[2:0], use_relu};
 
         // Stage 1: Leaky ReLU (negative >> 3)
-        if (use_relu_pipe[0])
+        if (use_relu)
             leaky_result <= ($signed(data_in) >= 0) ? data_in : (data_in >>> 3);
         else
             leaky_result <= data_in;

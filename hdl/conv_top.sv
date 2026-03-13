@@ -73,18 +73,35 @@ logic [63:0] pixel_3x3_d1 [0:2][0:2];
 logic [63:0] pixel_3x3_d2 [0:2][0:2];
 
 always_ff @(posedge clk) begin
-    pixel_3x3_d0 <= kw_window;
-    pixel_3x3_d1 <= pixel_3x3_d0;
-    pixel_3x3_d2 <= pixel_3x3_d1;
+    if (rst) begin
+        for (int r = 0; r < 3; r++) begin
+            for (int c = 0; c < 3; c++) begin
+                pixel_3x3_d0[r][c] <= '0;
+                pixel_3x3_d1[r][c] <= '0;
+                pixel_3x3_d2[r][c] <= '0;
+            end
+        end
+    end else begin
+        pixel_3x3_d0 <= kw_window;
+        pixel_3x3_d1 <= pixel_3x3_d0;
+        pixel_3x3_d2 <= pixel_3x3_d1;
+    end
 end
 
 logic [63:0] pixel_1x1_d0, pixel_1x1_d1, pixel_1x1_d2, pixel_1x1_d3;
 
 always_ff @(posedge clk) begin
-    pixel_1x1_d0 <= pixel_in;
-    pixel_1x1_d1 <= pixel_1x1_d0;
-    pixel_1x1_d2 <= pixel_1x1_d1;
-    pixel_1x1_d3 <= pixel_1x1_d2;
+    if (rst) begin
+        pixel_1x1_d0 <= '0;
+        pixel_1x1_d1 <= '0;
+        pixel_1x1_d2 <= '0;
+        pixel_1x1_d3 <= '0;
+    end else begin
+        pixel_1x1_d0 <= pixel_in;
+        pixel_1x1_d1 <= pixel_1x1_d0;
+        pixel_1x1_d2 <= pixel_1x1_d1;
+        pixel_1x1_d3 <= pixel_1x1_d2;
+    end
 end
 
 logic [63:0] pixel_mux [0:2][0:2];
@@ -145,18 +162,20 @@ logic [7:0]  quant_out [0:7];
 logic        quant_valid;
 logic [63:0] quant_packed;
 
+logic [7:0] quant_valid_vec;
+
 generate
     for (genvar i = 0; i < 8; i++) begin : gen_quant
         quantizer u_quant (
             .clk(clk), .rst(rst),
             .data_in(conv_outs[i]), .valid_in(conv_data_valid),
             .M(cfg_quant_m), .n(cfg_quant_n), .use_relu(cfg_use_relu),
-            .data_out(quant_out[i]), .valid_out()
+            .data_out(quant_out[i]), .valid_out(quant_valid_vec[i])
         );
     end
 endgenerate
 
-assign quant_valid = gen_quant[0].u_quant.valid_out;
+assign quant_valid = quant_valid_vec[0];
 
 always_comb begin
     for (int i = 0; i < 8; i++)

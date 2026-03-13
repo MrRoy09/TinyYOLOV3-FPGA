@@ -13,38 +13,25 @@ module conv_3x3 #()
     output logic data_valid
 );
 
+logic [7:0] pe_data_valid;
+
 genvar i;
-
 generate
-
-    for (i=0; i<8; i++) begin : pe_gen
-        if(i==0) begin : pe0_blk
-            conv_pe ConvPE(
-                .clk(clk),
-                .rst(rst),
-                .valid_in(valid_in),
-                .last_channel(last_channel),
-                .pixels(pixels),
-                .weights(weights[i]),
-                .bias(biases[i]),
-                .out(outs[i]),
-                .data_valid(data_valid)
-            );
-        end else begin
-            conv_pe ConvPE(
-                .clk(clk),
-                .rst(rst),
-                .valid_in(valid_in),
-                .last_channel(last_channel),
-                .pixels(pixels),
-                .weights(weights[i]),
-                .bias(biases[i]),
-                .out(outs[i]),
-                .data_valid()
-            );
-        end
+    for (i = 0; i < 8; i++) begin : pe_gen
+        conv_pe ConvPE (
+            .clk(clk),
+            .rst(rst),
+            .valid_in(valid_in),
+            .last_channel(last_channel),
+            .pixels(pixels),
+            .weights(weights[i]),
+            .bias(biases[i]),
+            .out(outs[i]),
+            .data_valid(pe_data_valid[i])
+        );
     end
-
 endgenerate
+
+assign data_valid = pe_data_valid[0];
 
 endmodule

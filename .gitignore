@@ -49,10 +49,21 @@ plan.md
 context.md
 fixes.md
 
-# Generated detection outputs
 detection_result.jpg
 detection_output.jpg
 
-# Incomplete stimulus directories (if regenerated)
 scripts/stimulus_batch_test/
 scripts/stimulus_l5/
+scripts/stimulus_bulk_debug/
+scripts/gen_bulk_debug_stimulus.py
+
+hdl/pixel_cache.sv
+hdl/testbenches/tb_bulk_debug.sv
+hdl/testbenches/tb_bulk_debug_postsynth.sv
+hdl/testbenches/tb_pixel_cache.sv
+hdl/testbenches/run_post_synth_sim.tcl
+hdl/testbenches/run_post_synth_sim2.tcl
+hdl/testbenches/biases_bulk.hex
+hdl/testbenches/weights_bulk.hex
+hdl/testbenches/pixels.hex
+hdl/testbenches/expected_og*.hex

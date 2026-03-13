@@ -12,18 +12,23 @@ module bias_store #(
     input  logic                  rd_en,
     input  logic [ADDR_WIDTH-2:0] rd_group,
     output logic [31:0]           bias_out [0:7],
-    output logic                  rd_valid
+    output logic                  rd_valid,
+    output logic                  wr_overflow
 );
 
 logic [127:0] bram [0:MAX_DEPTH-1];
 logic [ADDR_WIDTH-1:0] wr_addr;
 
 always_ff @(posedge clk) begin
-    if (wr_addr_rst)
-        wr_addr <= 0;
-    else if (wr_en) begin
+    if (wr_addr_rst) begin
+        wr_addr     <= '0;
+        wr_overflow <= 1'b0;
+    end else if (wr_en) begin
         bram[wr_addr] <= wr_data;
-        wr_addr       <= wr_addr + 1;
+        if (wr_addr < MAX_DEPTH - 1)
+            wr_addr <= wr_addr + 1;
+        else
+            wr_overflow <= 1'b1;
     end
 end
 

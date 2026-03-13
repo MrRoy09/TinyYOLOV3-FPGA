@@ -82,7 +82,9 @@ end
 always_ff @(posedge clk) begin
     if (rst) begin
         h_max_latched <= '0;
-        v_in_q <= 0;
+        v_in_q        <= 1'b0;
+        col_q         <= '0;
+        row_q         <= '0;
     end else begin
         v_in_q <= valid_in;
         col_q  <= col_cnt;
@@ -134,7 +136,6 @@ function automatic logic [63:0] vec_max(input logic [63:0] a, input logic [63:0]
     return res;
 endfunction
 
-// Column delay buffer
 logic [63:0] col_buf [0:127];
 logic [7:0]  col_buf_ptr;
 
@@ -150,7 +151,7 @@ always_ff @(posedge clk) begin
         if (ch_limit_r <= 8'd1) begin
             prev_col <= data_in_eff;
         end else begin
-            prev_col             <= col_buf[col_buf_ptr];
+            prev_col             <= (col_cnt == 16'd0) ? PAD_VALUE : col_buf[col_buf_ptr];
             col_buf[col_buf_ptr] <= data_in_eff;
             col_buf_ptr <= (col_buf_ptr >= ch_limit_r - 2) ? '0 : col_buf_ptr + 1'b1;
         end

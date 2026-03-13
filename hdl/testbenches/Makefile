@@ -48,6 +48,7 @@ CORE_SRCS := \
     $(HDL_DIR)/quantizer.sv \
     $(HDL_DIR)/maxpool.sv \
     $(HDL_DIR)/conv_controller.sv \
+    $(HDL_DIR)/pixel_cache.sv \
     $(HDL_DIR)/conv_top.sv \
     $(HDL_DIR)/axi_conv_wrapper.sv
 
@@ -64,7 +65,8 @@ UNIT_TBS := \
     tb_kernel_window \
     tb_weight_bank \
     tb_weight_manager \
-    tb_bias_store
+    tb_bias_store \
+    tb_pixel_cache
 
 # Integration testbenches (slower, more comprehensive)
 INTEGRATION_TBS := \

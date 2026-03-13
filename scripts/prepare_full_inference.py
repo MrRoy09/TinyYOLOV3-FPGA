@@ -190,7 +190,12 @@ def main():
         if cout == 255:
             co_groups = 32  # 32 groups, last one has only 7 valid channels
 
-        padded_in = spatial_in + 2 if kernel_size == 3 else spatial_in
+        if kernel_size == 3 and mp_stride == 1:
+            padded_in = spatial_in + 3  # Extra padding for backward-looking maxpool
+        elif kernel_size == 3:
+            padded_in = spatial_in + 2
+        else:
+            padded_in = spatial_in
 
         print(f"  Weights: {weights.shape}, Biases: {biases.shape}")
         print(f"  M=0x{M:04X}, n={n}, use_relu={use_relu}")
@@ -249,6 +254,13 @@ def main():
         input_padded = pad_channels(input_nhwc, cin_pad)
         if kernel_size == 3:
             input_padded = pad_spatial(input_padded, pad=1)
+            if mp_stride == 1:
+                # RTL backward-looking maxpool needs (H+1)x(W+1) conv output
+                # to skip row0/col0 and produce HxW. Add extra bottom/right zero padding.
+                h, w, c = input_padded.shape  # Currently (H+2)x(W+2) e.g. 15x15
+                extended = np.zeros((h + 1, w + 1, c), dtype=input_padded.dtype)
+                extended[:h, :w, :] = input_padded
+                input_padded = extended  # Now (H+3)x(W+3) e.g. 16x16
 
         print(f"  Input shape: {input_padded.shape}")
 

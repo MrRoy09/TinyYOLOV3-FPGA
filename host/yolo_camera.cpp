@@ -1,27 +1,12 @@
 /*
  * yolo_camera.cpp - Pipelined TinyYOLOv3 Live Camera Inference
  *
- * Real-time object detection using USB camera and FPGA acceleration.
- * Uses a 3-stage pipeline with triple buffering for maximum throughput:
- *   Stage 1: Camera capture (async)
- *   Stage 2: FPGA inference
- *   Stage 3: Display with bounding boxes
+ * 3-stage pipeline: capture → FPGA inference → display with bounding boxes
  *
  * Build: make yolo_camera TARGET=hw
  * Run:   ./yolo_camera <xclbin_file> <weights_dir> [options]
  *
- * Options:
- *   --camera <id>    : Camera device ID (default: 0)
- *   --no-batch       : Disable multi-OG batching (1 OG per kernel call)
- *   --width <w>      : Camera capture width (default: 640)
- *   --height <h>     : Camera capture height (default: 480)
- *   --conf <thresh>  : Confidence threshold (default: 0.25)
- *   --headless       : Run without display (print detections only)
- *
- * Controls (when display is active):
- *   'q' or ESC : Quit
- *   's'        : Save current frame
- *   'p'        : Pause/resume
+ * Controls: 'q'/ESC=quit, 's'=save frame, 'p'=pause
  */
 
 #include <iostream>
@@ -40,14 +25,12 @@
 #include <queue>
 #include <sstream>
 
-// OpenCV for camera, display, and image processing
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/videoio.hpp>
 
-// NEON intrinsics for fast operations on ARM
 #ifdef __ARM_NEON
 #include <arm_neon.h>
 #endif
@@ -59,14 +42,11 @@
 
 #include "yolo_postprocess.hpp"
 
-// ============================================================================
-// Configuration
-// ============================================================================
 struct AppConfig {
     std::string xclbin_file;
     std::string weights_dir;
     int camera_id = 0;
-    int capture_width = 1280;   // 720p for better quality
+    int capture_width = 1280;
     int capture_height = 720;
     float conf_threshold = 0.25f;
     float nms_threshold = 0.45f;
@@ -75,14 +55,10 @@ struct AppConfig {
     bool verbose = false;
 };
 
-// Global config
 AppConfig g_config;
 std::atomic<bool> g_running{true};
 std::atomic<bool> g_paused{false};
 
-// ============================================================================
-// Thread-Safe Frame Queue
-// ============================================================================
 template<typename T>
 class ThreadSafeQueue {
 public:
@@ -91,8 +67,7 @@ public:
     bool push(T item) {
         std::unique_lock<std::mutex> lock(mutex_);
         if (queue_.size() >= max_size_) {
-            // Drop oldest frame to prevent latency buildup
-            queue_.pop();
+            queue_.pop();  // drop oldest to prevent latency buildup
         }
         queue_.push(std::move(item));
         lock.unlock();
@@ -128,17 +103,14 @@ private:
     size_t max_size_;
 };
 
-// ============================================================================
-// Frame Data Structures
-// ============================================================================
 struct CapturedFrame {
-    cv::Mat image;           // Original BGR image from camera
-    int64_t timestamp_ms;    // Capture timestamp
-    int frame_id;            // Frame counter
+    cv::Mat image;
+    int64_t timestamp_ms;
+    int frame_id;
 };
 
 struct InferenceResult {
-    cv::Mat image;           // Original image for display
+    cv::Mat image;
     std::vector<BBox> detections;
     float inference_time_ms;
     float preprocess_time_ms;
@@ -146,13 +118,9 @@ struct InferenceResult {
     int frame_id;
 };
 
-// Pipeline queues
 ThreadSafeQueue<CapturedFrame> g_capture_queue(2);
 ThreadSafeQueue<InferenceResult> g_display_queue(2);
 
-// ============================================================================
-// Layer Configuration (same as yolo_inference.cpp)
-// ============================================================================
 struct LayerConfig {
     int hw_layer;
     int cin, cout;
@@ -185,9 +153,6 @@ const LayerConfig LAYERS[] = {
 };
 const int NUM_LAYERS = sizeof(LAYERS) / sizeof(LAYERS[0]);
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
 std::vector<uint8_t> read_binary_file(const std::string& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
@@ -200,9 +165,6 @@ std::vector<uint8_t> read_binary_file(const std::string& path) {
     return data;
 }
 
-// ============================================================================
-// Preloaded Weights Structure
-// ============================================================================
 struct PreloadedWeights {
     std::vector<std::vector<std::vector<uint8_t>>> layer_weights;  // [layer][og]
     std::vector<std::vector<std::vector<uint8_t>>> layer_biases;   // [layer][og]
@@ -228,9 +190,6 @@ void preload_all_weights(const std::string& weights_dir, PreloadedWeights& pw) {
     }
 }
 
-// ============================================================================
-// FPGA Buffer Management
-// ============================================================================
 struct InferenceBuffers {
     xrt::bo pixel_bo;
     xrt::bo weight_bo;
@@ -249,13 +208,11 @@ struct InferenceBuffers {
 };
 
 void init_buffers(xrt::device& device, xrt::kernel& kernel, InferenceBuffers& bufs) {
-    // Buffer sizes - generous for all layers
     bufs.weight_buf_size = 8 * 1024 * 1024;   // 8MB
-    bufs.bias_buf_size   = 128 * 32;          // 4KB
+    bufs.bias_buf_size   = 128 * 32;           // 4KB
     bufs.pixel_buf_size  = 2 * 1024 * 1024;   // 2MB
     bufs.output_buf_size = 2 * 1024 * 1024;   // 2MB
 
-    // Group IDs match the kernel argument positions (19-22)
     bufs.weight_bo = xrt::bo(device, bufs.weight_buf_size, kernel.group_id(19));
     bufs.bias_bo   = xrt::bo(device, bufs.bias_buf_size,   kernel.group_id(20));
     bufs.pixel_bo  = xrt::bo(device, bufs.pixel_buf_size,  kernel.group_id(21));
@@ -267,55 +224,41 @@ void init_buffers(xrt::device& device, xrt::kernel& kernel, InferenceBuffers& bu
     bufs.output_ptr = bufs.output_bo.map<uint8_t*>();
 }
 
-// ============================================================================
-// Image Preprocessing (matches yolo_inference.cpp exactly)
-// ============================================================================
+// Crop center square, resize to 416x416, normalize to INT8, pad to 418x418x8
 void preprocess_frame(const cv::Mat& frame, std::vector<uint8_t>& output) {
-    // Crop a square from center, shifted left and up
     int min_dim = std::min(frame.cols, frame.rows);
-    int crop_size = min_dim;  // Use full height as square
-    int x_offset = (frame.cols - crop_size) / 2 - 40;  // Shift left
-    int y_offset = (frame.rows - crop_size) / 2 - 40;  // Shift up
+    int crop_size = min_dim;
+    int x_offset = (frame.cols - crop_size) / 2 - 40;
+    int y_offset = (frame.rows - crop_size) / 2 - 40;
 
-    // Clamp to valid range
     x_offset = std::max(0, std::min(x_offset, frame.cols - crop_size));
     y_offset = std::max(0, std::min(y_offset, frame.rows - crop_size));
 
     cv::Rect roi(x_offset, y_offset, crop_size, crop_size);
     cv::Mat cropped = frame(roi);
 
-    // Resize to 416x416
     cv::Mat resized;
     cv::resize(cropped, resized, cv::Size(416, 416), 0, 0, cv::INTER_LINEAR);
 
-    // Convert BGR to RGB
     cv::Mat rgb;
     cv::cvtColor(resized, rgb, cv::COLOR_BGR2RGB);
 
-    // Create padded output (418x418x8 for first layer with padding)
     int padded_h = 418, padded_w = 418, channels = 8;
     output.resize(padded_h * padded_w * channels, 0);
 
-    // Copy with padding (1 pixel border of zeros)
-    // Use same normalization as yolo_inference.cpp: (pixel + 1) >> 1
-    // Maps [0, 255] to [0, 127]
     for (int y = 0; y < 416; y++) {
         const uint8_t* row = rgb.ptr<uint8_t>(y);
         uint8_t* dst_row = output.data() + ((y + 1) * padded_w + 1) * channels;
         for (int x = 0; x < 416; x++) {
-            dst_row[0] = (row[0] + 1) >> 1;  // R
-            dst_row[1] = (row[1] + 1) >> 1;  // G
-            dst_row[2] = (row[2] + 1) >> 1;  // B
-            // Channels 3-7 stay zero (already initialized)
+            dst_row[0] = (row[0] + 1) >> 1;
+            dst_row[1] = (row[1] + 1) >> 1;
+            dst_row[2] = (row[2] + 1) >> 1;
             row += 3;
             dst_row += channels;
         }
     }
 }
 
-// ============================================================================
-// CPU Helper Functions
-// ============================================================================
 void pad_spatial(const std::vector<uint8_t>& input, int h, int w, int c,
                  std::vector<uint8_t>& output) {
     int padded_h = h + 2;
@@ -330,9 +273,24 @@ void pad_spatial(const std::vector<uint8_t>& input, int h, int w, int c,
     }
 }
 
+// Stride-1 maxpool: RTL skips row 0/col 0 of conv output.
+// Pad to (H+3)x(W+3) so conv produces (H+1)x(W+1), maxpool yields HxH.
+void pad_spatial_stride1(const std::vector<uint8_t>& input, int h, int w, int c,
+                         std::vector<uint8_t>& output) {
+    int padded_h = h + 3;
+    int padded_w = w + 3;
+    output.resize(padded_h * padded_w * c, 0);
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int src_idx = (y * w + x) * c;
+            int dst_idx = ((y + 1) * padded_w + (x + 1)) * c;
+            std::memcpy(&output[dst_idx], &input[src_idx], c);
+        }
+    }
+}
+
 void cpu_upsample_2x(const uint8_t* input, uint8_t* output,
                      int in_h, int in_w, int channels) {
-    int out_h = in_h * 2;
     int out_w = in_w * 2;
     for (int y = 0; y < in_h; y++) {
         for (int x = 0; x < in_w; x++) {
@@ -382,9 +340,6 @@ void cpu_maxpool_stride2(const uint8_t* input, uint8_t* output, int h, int w, in
     }
 }
 
-// ============================================================================
-// NEON-optimized batch interleave
-// ============================================================================
 void neon_batch_interleave(const std::vector<std::vector<uint8_t>>& og_outputs,
                            uint8_t* dst, int num_pixels, int num_ogs, int cout) {
 #ifdef __ARM_NEON
@@ -410,9 +365,6 @@ void neon_batch_interleave(const std::vector<std::vector<uint8_t>>& og_outputs,
 #endif
 }
 
-// ============================================================================
-// Run Single Layer on FPGA
-// ============================================================================
 void run_layer(xrt::kernel& kernel, const LayerConfig& cfg,
                const std::vector<uint8_t>& pixels, std::vector<uint8_t>& output,
                InferenceBuffers& bufs, PreloadedWeights& pw, int layer_idx) {
@@ -424,16 +376,13 @@ void run_layer(xrt::kernel& kernel, const LayerConfig& cfg,
     int actual_padded_w = (cfg.maxpool_stride == 1) ? (cfg.out_w + 3) : cfg.padded_w;
     size_t pixel_bytes = actual_padded_h * actual_padded_w * cfg.cin_pad;
 
-    int hw_out_h = cfg.out_h;
-    int hw_out_w = cfg.out_w;
-    int num_pixels = hw_out_h * hw_out_w;
+    int num_pixels = cfg.out_h * cfg.out_w;
     size_t weight_bytes_per_og = cfg.ci_groups * 8 * 8 * 16;
-    size_t bias_bytes_per_og = 32;  // Match yolo_inference.cpp
     size_t output_bytes_per_og = num_pixels * 8;
+    size_t output_stride_per_og = ((output_bytes_per_og + 4095) / 4096) * 4096;
 
-    // Copy pixels to device
     std::memcpy(bufs.pixel_ptr, pixels.data(), pixel_bytes);
-    bufs.pixel_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    bufs.pixel_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, pixel_bytes, 0);
 
     std::vector<std::vector<uint8_t>> og_outputs(cfg.co_groups);
     for (int og = 0; og < cfg.co_groups; og++) {
@@ -444,40 +393,36 @@ void run_layer(xrt::kernel& kernel, const LayerConfig& cfg,
         int chunk_start_og = chunk * max_og_per_chunk;
         int ogs_in_chunk = std::min(max_og_per_chunk, cfg.co_groups - chunk_start_og);
 
-        // Pack weights and biases for this chunk
         for (int og = 0; og < ogs_in_chunk; og++) {
             int global_og = chunk_start_og + og;
             std::memcpy(bufs.weight_ptr + og * weight_bytes_per_og,
                        pw.layer_weights[layer_idx][global_og].data(),
                        weight_bytes_per_og);
-            std::memcpy(bufs.bias_ptr + og * bias_bytes_per_og,
+            std::memcpy(bufs.bias_ptr + og * 32,
                        pw.layer_biases[layer_idx][global_og].data(),
                        std::min((size_t)32, pw.layer_biases[layer_idx][global_og].size()));
         }
 
-        bufs.weight_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-        bufs.bias_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+        size_t actual_weight_bytes = static_cast<size_t>(ogs_in_chunk) * weight_bytes_per_og;
+        size_t actual_bias_bytes = static_cast<size_t>(ogs_in_chunk) * 32;
+        bufs.weight_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, actual_weight_bytes, 0);
+        bufs.bias_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, actual_bias_bytes, 0);
 
-        // Run kernel using correct xrt::run API
         xrt::run run(kernel);
         run.set_arg(0, bufs.weight_bo.address());
         run.set_arg(1, bufs.bias_bo.address());
         run.set_arg(2, bufs.pixel_bo.address());
         run.set_arg(3, bufs.output_bo.address());
-
-        // Per-OG sizes (RTL uses these as strides for address calculation)
         run.set_arg(4, static_cast<uint32_t>(weight_bytes_per_og));
-        run.set_arg(5, static_cast<uint32_t>(32));  // bias bytes per OG
+        run.set_arg(5, static_cast<uint32_t>(32));
         run.set_arg(6, static_cast<uint32_t>(pixel_bytes));
         run.set_arg(7, static_cast<uint32_t>(output_bytes_per_og));
-
         run.set_arg(8, static_cast<uint32_t>(cfg.ci_groups));
         run.set_arg(9, static_cast<uint32_t>(ogs_in_chunk));
-        run.set_arg(10, static_cast<uint32_t>(0));  // wt_base_addr
+        run.set_arg(10, static_cast<uint32_t>(0));
         run.set_arg(11, static_cast<uint32_t>(cfg.cin_pad));
         run.set_arg(12, static_cast<uint32_t>(actual_padded_w));
 
-        // Maxpool config
         bool enable_hw_maxpool = (cfg.maxpool_stride != 0);
         run.set_arg(13, static_cast<uint32_t>(enable_hw_maxpool ? 1 : 0));
         run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0));
@@ -485,8 +430,6 @@ void run_layer(xrt::kernel& kernel, const LayerConfig& cfg,
         run.set_arg(16, cfg.quant_n);
         run.set_arg(17, static_cast<uint32_t>(cfg.use_relu));
         run.set_arg(18, static_cast<uint32_t>(cfg.kernel_1x1));
-
-        // Buffer objects for memory connectivity
         run.set_arg(19, bufs.weight_bo);
         run.set_arg(20, bufs.bias_bo);
         run.set_arg(21, bufs.pixel_bo);
@@ -495,19 +438,17 @@ void run_layer(xrt::kernel& kernel, const LayerConfig& cfg,
         run.start();
         run.wait();
 
-        // Sync outputs
-        bufs.output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+        size_t actual_output_bytes = static_cast<size_t>(ogs_in_chunk) * output_stride_per_og;
+        bufs.output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE, actual_output_bytes, 0);
 
-        // Copy to per-OG buffers
         for (int og = 0; og < ogs_in_chunk; og++) {
             int global_og = chunk_start_og + og;
             std::memcpy(og_outputs[global_og].data(),
-                       bufs.output_ptr + og * output_bytes_per_og,
+                       bufs.output_ptr + og * output_stride_per_og,
                        output_bytes_per_og);
         }
     }
 
-    // Interleave outputs
     output.resize(num_pixels * cfg.cout);
     if (cfg.co_groups == 1) {
         std::memcpy(output.data(), og_outputs[0].data(), num_pixels * std::min(8, cfg.cout));
@@ -516,9 +457,6 @@ void run_layer(xrt::kernel& kernel, const LayerConfig& cfg,
     }
 }
 
-// ============================================================================
-// Full Inference Pipeline
-// ============================================================================
 void run_inference(const std::vector<uint8_t>& input_pixels,
                    xrt::kernel& kernel, InferenceBuffers& bufs,
                    PreloadedWeights& pw,
@@ -552,26 +490,23 @@ void run_inference(const std::vector<uint8_t>& input_pixels,
 
             if (cfg.kernel_1x1) {
                 pixels = layer_output;
+            } else if (cfg.maxpool_stride == 1) {
+                pad_spatial_stride1(layer_output, prev_h, prev_w, prev_c, pixels);
             } else {
                 pad_spatial(layer_output, prev_h, prev_w, prev_c, pixels);
             }
         }
 
         if (i == 4) {
-            // Special handling for layer 4: run without HW maxpool, save conv output, then CPU maxpool
-            // Create modified config with no maxpool
+            // Run without HW maxpool, save conv output for layer 11 concat, then CPU maxpool
             LayerConfig cfg_no_mp = cfg;
             cfg_no_mp.maxpool_stride = 0;
-            cfg_no_mp.out_h = 26;  // Conv output before maxpool
+            cfg_no_mp.out_h = 26;
             cfg_no_mp.out_w = 26;
 
-            // Run layer 4 without maxpool
             run_layer(kernel, cfg_no_mp, pixels, layer_output, bufs, pw, i);
-
-            // Save conv output for concat at layer 11
             layer4_conv_output = layer_output;
 
-            // Apply CPU stride-2 maxpool to get 13x13 output for layer 5
             std::vector<uint8_t> pooled_output(13 * 13 * 256);
             cpu_maxpool_stride2(layer_output.data(), pooled_output.data(), 26, 26, 256);
             layer_output = pooled_output;
@@ -579,26 +514,15 @@ void run_inference(const std::vector<uint8_t>& input_pixels,
             run_layer(kernel, cfg, pixels, layer_output, bufs, pw, i);
         }
 
-        // Save intermediate outputs
-        if (i == 7) {
-            layer7_output = layer_output;
-        }
-        if (i == 9) {
-            layer9_output = layer_output;
-        }
-        if (i == 12) {
-            layer12_output = layer_output;
-        }
+        if (i == 7) layer7_output = layer_output;
+        if (i == 9) layer9_output = layer_output;
+        if (i == 12) layer12_output = layer_output;
     }
 }
 
-// ============================================================================
-// Camera Capture Thread
-// ============================================================================
 void capture_thread_func(int camera_id, int width, int height) {
     cv::VideoCapture cap;
 
-    // Try V4L2 backend first (better for USB cameras on Linux)
     cap.open(camera_id, cv::CAP_V4L2);
     if (!cap.isOpened()) {
         cap.open(camera_id, cv::CAP_ANY);
@@ -610,11 +534,10 @@ void capture_thread_func(int camera_id, int width, int height) {
         return;
     }
 
-    // Set camera properties - try MJPG format for higher resolution support
     cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
     cap.set(cv::CAP_PROP_FRAME_WIDTH, width);
     cap.set(cv::CAP_PROP_FRAME_HEIGHT, height);
-    cap.set(cv::CAP_PROP_BUFFERSIZE, 2);  // Minimize latency
+    cap.set(cv::CAP_PROP_BUFFERSIZE, 2);
 
     int actual_w = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
     int actual_h = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
@@ -653,9 +576,6 @@ void capture_thread_func(int camera_id, int width, int height) {
     cap.release();
 }
 
-// ============================================================================
-// Inference Thread
-// ============================================================================
 void inference_thread_func(xrt::kernel& kernel, InferenceBuffers& bufs,
                            PreloadedWeights& pw) {
     while (g_running) {
@@ -666,35 +586,28 @@ void inference_thread_func(xrt::kernel& kernel, InferenceBuffers& bufs,
 
         auto total_start = std::chrono::high_resolution_clock::now();
 
-        // Preprocess
         auto preprocess_start = std::chrono::high_resolution_clock::now();
         std::vector<uint8_t> input_pixels;
         preprocess_frame(cf.image, input_pixels);
         auto preprocess_end = std::chrono::high_resolution_clock::now();
 
-        // Run inference
         auto infer_start = std::chrono::high_resolution_clock::now();
         std::vector<uint8_t> layer9_output, layer12_output;
         run_inference(input_pixels, kernel, bufs, pw, layer9_output, layer12_output);
         auto infer_end = std::chrono::high_resolution_clock::now();
 
-        // Post-process (decode detections)
         auto postprocess_start = std::chrono::high_resolution_clock::now();
         std::vector<BBox> detections;
 
-        // Decode 13x13 grid (large objects)
         decode_detections(layer9_output.data(), 13, 13, ANCHORS_13x13, 3,
                          DEQUANT_SCALE_13x13, g_config.conf_threshold, 416, detections);
 
-        // Decode 26x26 grid (small objects)
         decode_detections(layer12_output.data(), 26, 26, ANCHORS_26x26, 3,
                          DEQUANT_SCALE_26x26, g_config.conf_threshold, 416, detections);
 
-        // Apply NMS
         detections = nms(detections, g_config.nms_threshold);
         auto postprocess_end = std::chrono::high_resolution_clock::now();
 
-        // Create result
         InferenceResult result;
         result.image = cf.image;
         result.detections = std::move(detections);
@@ -710,46 +623,30 @@ void inference_thread_func(xrt::kernel& kernel, InferenceBuffers& bufs,
     }
 }
 
-// ============================================================================
-// Drawing Functions
-// ============================================================================
 const cv::Scalar COLORS[] = {
-    cv::Scalar(255, 0, 0),     // Blue
-    cv::Scalar(0, 255, 0),     // Green
-    cv::Scalar(0, 0, 255),     // Red
-    cv::Scalar(255, 255, 0),   // Cyan
-    cv::Scalar(255, 0, 255),   // Magenta
-    cv::Scalar(0, 255, 255),   // Yellow
-    cv::Scalar(128, 0, 255),   // Purple
-    cv::Scalar(255, 128, 0),   // Orange
+    cv::Scalar(255, 0, 0),     cv::Scalar(0, 255, 0),
+    cv::Scalar(0, 0, 255),     cv::Scalar(255, 255, 0),
+    cv::Scalar(255, 0, 255),   cv::Scalar(0, 255, 255),
+    cv::Scalar(128, 0, 255),   cv::Scalar(255, 128, 0),
 };
 
 void draw_detections(cv::Mat& frame, const std::vector<BBox>& detections,
                      float scale_x, float scale_y) {
     for (const auto& det : detections) {
-        // Convert from 416x416 to frame coordinates
         float cx = det.x * scale_x;
         float cy = det.y * scale_y;
         float w = det.w * scale_x;
         float h = det.h * scale_y;
 
-        int x1 = static_cast<int>(cx - w / 2);
-        int y1 = static_cast<int>(cy - h / 2);
-        int x2 = static_cast<int>(cx + w / 2);
-        int y2 = static_cast<int>(cy + h / 2);
-
-        // Clamp to frame bounds
-        x1 = std::max(0, x1);
-        y1 = std::max(0, y1);
-        x2 = std::min(frame.cols - 1, x2);
-        y2 = std::min(frame.rows - 1, y2);
+        int x1 = std::max(0, static_cast<int>(cx - w / 2));
+        int y1 = std::max(0, static_cast<int>(cy - h / 2));
+        int x2 = std::min(frame.cols - 1, static_cast<int>(cx + w / 2));
+        int y2 = std::min(frame.rows - 1, static_cast<int>(cy + h / 2));
 
         cv::Scalar color = COLORS[det.class_id % 8];
 
-        // Draw bounding box
         cv::rectangle(frame, cv::Point(x1, y1), cv::Point(x2, y2), color, 2);
 
-        // Draw label background
         std::string label = std::string(det.class_name) + " " +
                            std::to_string(static_cast<int>(det.confidence * 100)) + "%";
         int baseline;
@@ -761,7 +658,6 @@ void draw_detections(cv::Mat& frame, const std::vector<BBox>& detections,
                      cv::Point(x1 + label_size.width + 5, label_y + 3),
                      color, cv::FILLED);
 
-        // Draw label text
         cv::putText(frame, label, cv::Point(x1 + 2, label_y - 2),
                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 1);
     }
@@ -786,9 +682,6 @@ void draw_stats(cv::Mat& frame, float preprocess_ms, float inference_ms,
     }
 }
 
-// ============================================================================
-// Display Thread
-// ============================================================================
 void display_thread_func() {
     if (!g_config.headless) {
         cv::namedWindow("TinyYOLOv3 Live", cv::WINDOW_AUTOSIZE);
@@ -805,13 +698,11 @@ void display_thread_func() {
         float scale_x = static_cast<float>(result.image.cols) / 416.0f;
         float scale_y = static_cast<float>(result.image.rows) / 416.0f;
 
-        // Draw detections and stats
         draw_detections(result.image, result.detections, scale_x, scale_y);
         draw_stats(result.image, result.preprocess_time_ms, result.inference_time_ms,
                   result.postprocess_time_ms, result.detections.size());
 
         if (g_config.headless) {
-            // Print detections to console
             if (!result.detections.empty()) {
                 std::cout << "Frame " << result.frame_id << ": "
                           << result.detections.size() << " detections";
@@ -825,7 +716,7 @@ void display_thread_func() {
             cv::imshow("TinyYOLOv3 Live", result.image);
 
             int key = cv::waitKey(1) & 0xFF;
-            if (key == 'q' || key == 27) {  // 'q' or ESC
+            if (key == 'q' || key == 27) {
                 g_running = false;
             } else if (key == 's') {
                 std::string filename = "capture_" + std::to_string(save_counter++) + ".jpg";
@@ -843,9 +734,6 @@ void display_thread_func() {
     }
 }
 
-// ============================================================================
-// Main
-// ============================================================================
 void print_usage(const char* prog) {
     std::cerr << "Usage: " << prog << " <xclbin_file> <weights_dir> [options]\n"
               << "\nOptions:\n"
@@ -871,7 +759,6 @@ int main(int argc, char* argv[]) {
     g_config.xclbin_file = argv[1];
     g_config.weights_dir = argv[2];
 
-    // Parse options
     for (int i = 3; i < argc; i++) {
         std::string arg = argv[i];
         if (arg == "--camera" && i + 1 < argc) {
@@ -908,19 +795,16 @@ int main(int argc, char* argv[]) {
     std::cout << "========================================\n\n";
 
     try {
-        // Initialize FPGA
         std::cout << "Initializing FPGA..." << std::endl;
         xrt::device device(0);
         auto uuid = device.load_xclbin(g_config.xclbin_file);
         xrt::kernel kernel(device, uuid, "TinyYOLOV3_HW_Complete");
         std::cout << "  Device: " << device.get_info<xrt::info::device::name>() << std::endl;
 
-        // Allocate buffers
         InferenceBuffers bufs;
         init_buffers(device, kernel, bufs);
         std::cout << "  Buffers allocated" << std::endl;
 
-        // Preload weights
         std::cout << "Loading weights..." << std::endl;
         PreloadedWeights pw;
         preload_all_weights(g_config.weights_dir, pw);
@@ -928,14 +812,12 @@ int main(int argc, char* argv[]) {
 
         std::cout << "\nStarting pipeline...\n" << std::endl;
 
-        // Start threads
         std::thread capture_thread(capture_thread_func, g_config.camera_id,
                                    g_config.capture_width, g_config.capture_height);
         std::thread inference_thread(inference_thread_func, std::ref(kernel),
                                      std::ref(bufs), std::ref(pw));
         std::thread display_thread(display_thread_func);
 
-        // Wait for threads
         capture_thread.join();
         inference_thread.join();
         display_thread.join();

@@ -5,7 +5,7 @@ module conv_controller #(
     parameter CONV_PE_PIPE    = 4,  // 4 stages after timing fix
     parameter QUANT_LATENCY   = 4,
     parameter MAXPOOL_LATENCY = 4,
-    parameter PIPE_DEPTH      = WT_LATENCY + CONV_PE_PIPE + 1 + QUANT_LATENCY + MAXPOOL_LATENCY  // = 16
+    parameter PIPE_DEPTH      = WT_LATENCY + CONV_PE_PIPE + 1 + QUANT_LATENCY + MAXPOOL_LATENCY
 )(
     input  logic        clk,
     input  logic        rst,

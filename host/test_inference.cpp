@@ -1,8 +1,7 @@
 /*
  * test_inference.cpp - Streamlined TinyYOLOv3 Full Inference
  *
- * Runs all 13 layers in chained mode without per-layer verification.
- * Only validates final detection outputs (Layer 9 and Layer 12).
+ * Runs all 13 layers chained, validates final detection outputs (Layer 9 & 12).
  *
  * Build: make test_inference TARGET=hw
  * Run:   ./test_inference <xclbin_file> [stimulus_dir]
@@ -165,21 +164,19 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
                const std::vector<uint8_t>& pixels, std::vector<uint8_t>& layer_output,
                const std::string& layer_dir) {
 
-    bool use_cpu_maxpool = (cfg.maxpool_stride == 1);
-    int hw_out_h = use_cpu_maxpool ? cfg.img_h : cfg.out_h;
-    int hw_out_w = use_cpu_maxpool ? cfg.img_w : cfg.out_w;
+    int max_og_per_chunk = 4096 / cfg.ci_groups;
+    int num_chunks = (cfg.co_groups + max_og_per_chunk - 1) / max_og_per_chunk;
 
     size_t pixel_bytes = cfg.padded_h * cfg.padded_w * cfg.cin_pad;
-    size_t hw_output_bytes_per_og = hw_out_h * hw_out_w * 8;
-    size_t final_output_bytes_per_og = cfg.out_h * cfg.out_w * 8;
+    size_t output_bytes_per_og = cfg.out_h * cfg.out_w * 8;
+    size_t output_stride_per_og = ((output_bytes_per_og + 4095) / 4096) * 4096;
     size_t weight_bytes_per_og = cfg.ci_groups * 8 * 8 * 16;
 
-    size_t weight_buf_size = ((weight_bytes_per_og + 4095) / 4096) * 4096;
-    size_t bias_buf_size = 4096;
+    int chunk_size = std::min(max_og_per_chunk, cfg.co_groups);
+    size_t weight_buf_size = ((chunk_size * weight_bytes_per_og + 4095) / 4096) * 4096;
+    size_t bias_buf_size = ((chunk_size * 32 + 4095) / 4096) * 4096;
     size_t pixel_buf_size = ((pixel_bytes + 4095) / 4096) * 4096;
-    size_t output_buf_size = ((hw_output_bytes_per_og + 4095) / 4096) * 4096;
-
-    std::vector<uint8_t> cpu_maxpool_out;
+    size_t output_buf_size = ((chunk_size * output_stride_per_og + 4095) / 4096) * 4096;
 
     xrt::bo weight_bo(device, weight_buf_size, kernel.group_id(19));
     xrt::bo bias_bo(device, bias_buf_size, kernel.group_id(20));
@@ -193,43 +190,52 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
 
     std::memset(pixel_ptr, 0, pixel_buf_size);
     std::memcpy(pixel_ptr, pixels.data(), std::min(pixels.size(), pixel_buf_size));
-    pixel_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    pixel_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, std::min(pixels.size(), pixel_buf_size), 0);
 
     layer_output.resize(cfg.out_h * cfg.out_w * cfg.cout);
 
-    for (int og = 0; og < cfg.co_groups; og++) {
-        std::string weights_path = layer_dir + "/weights_og" + std::to_string(og) + ".bin";
-        auto weights = read_binary_file(weights_path);
-
-        std::string biases_path = layer_dir + "/biases_og" + std::to_string(og) + ".bin";
-        auto biases = read_binary_file(biases_path);
+    for (int chunk = 0; chunk < num_chunks; chunk++) {
+        int chunk_start_og = chunk * max_og_per_chunk;
+        int ogs_in_chunk = std::min(max_og_per_chunk, cfg.co_groups - chunk_start_og);
 
         std::memset(weight_ptr, 0, weight_buf_size);
         std::memset(bias_ptr, 0, bias_buf_size);
         std::memset(output_ptr, 0, output_buf_size);
 
-        std::memcpy(weight_ptr, weights.data(), weights.size());
-        std::memcpy(bias_ptr, biases.data(), biases.size());
+        for (int og_in_chunk = 0; og_in_chunk < ogs_in_chunk; og_in_chunk++) {
+            int global_og = chunk_start_og + og_in_chunk;
 
-        weight_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-        bias_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-        output_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+            auto weights = read_binary_file(layer_dir + "/weights_og" + std::to_string(global_og) + ".bin");
+            std::memcpy(weight_ptr + og_in_chunk * weight_bytes_per_og,
+                       weights.data(), std::min(weights.size(), weight_bytes_per_og));
+
+            auto biases = read_binary_file(layer_dir + "/biases_og" + std::to_string(global_og) + ".bin");
+            std::memcpy(bias_ptr + og_in_chunk * 32,
+                       biases.data(), std::min(biases.size(), static_cast<size_t>(32)));
+        }
+
+        size_t actual_wt_bytes = static_cast<size_t>(ogs_in_chunk) * weight_bytes_per_og;
+        size_t actual_bias_bytes = static_cast<size_t>(ogs_in_chunk) * 32;
+        size_t actual_out_bytes = static_cast<size_t>(ogs_in_chunk) * output_stride_per_og;
+        weight_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, actual_wt_bytes, 0);
+        bias_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, actual_bias_bytes, 0);
+        output_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, actual_out_bytes, 0);
 
         xrt::run run(kernel);
         run.set_arg(0, weight_bo.address());
         run.set_arg(1, bias_bo.address());
         run.set_arg(2, pixel_bo.address());
         run.set_arg(3, output_bo.address());
-        run.set_arg(4, static_cast<uint32_t>(weights.size()));
-        run.set_arg(5, static_cast<uint32_t>(biases.size()));
+        run.set_arg(4, static_cast<uint32_t>(weight_bytes_per_og));
+        run.set_arg(5, static_cast<uint32_t>(32));
         run.set_arg(6, static_cast<uint32_t>(pixel_bytes));
-        run.set_arg(7, static_cast<uint32_t>(hw_output_bytes_per_og));
+        run.set_arg(7, static_cast<uint32_t>(output_bytes_per_og));
         run.set_arg(8, static_cast<uint32_t>(cfg.ci_groups));
-        run.set_arg(9, static_cast<uint32_t>(0));
+        run.set_arg(9, static_cast<uint32_t>(ogs_in_chunk));
         run.set_arg(10, static_cast<uint32_t>(0));
         run.set_arg(11, static_cast<uint32_t>(cfg.cin_pad));
         run.set_arg(12, static_cast<uint32_t>(cfg.padded_w));
-        run.set_arg(13, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0));
+        run.set_arg(13, static_cast<uint32_t>(cfg.maxpool_stride != 0 ? 1 : 0));
         run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0));
         run.set_arg(15, cfg.quant_m);
         run.set_arg(16, cfg.quant_n);
@@ -241,24 +247,22 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
         run.set_arg(22, output_bo);
 
         run.start();
-        run.wait(std::chrono::seconds(120));
+        run.wait(std::chrono::seconds(300));
 
-        output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+        output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE, actual_out_bytes, 0);
 
-        const uint8_t* final_output_ptr = output_ptr;
-        if (use_cpu_maxpool) {
-            cpu_maxpool_out.resize(final_output_bytes_per_og);
-            cpu_maxpool_stride1(output_ptr, cpu_maxpool_out.data(), hw_out_h, hw_out_w, 8);
-            final_output_ptr = cpu_maxpool_out.data();
-        }
+        for (int og_in_chunk = 0; og_in_chunk < ogs_in_chunk; og_in_chunk++) {
+            int global_og = chunk_start_og + og_in_chunk;
+            const uint8_t* og_output_ptr = output_ptr + og_in_chunk * output_stride_per_og;
 
-        int valid_channels = std::min(8, cfg.cout - og * 8);
-        for (int y = 0; y < cfg.out_h; y++) {
-            for (int x = 0; x < cfg.out_w; x++) {
-                for (int ch = 0; ch < valid_channels; ch++) {
-                    int src_idx = (y * cfg.out_w + x) * 8 + ch;
-                    int dst_idx = (y * cfg.out_w + x) * cfg.cout + og * 8 + ch;
-                    layer_output[dst_idx] = final_output_ptr[src_idx];
+            int valid_channels = std::min(8, cfg.cout - global_og * 8);
+            for (int y = 0; y < cfg.out_h; y++) {
+                for (int x = 0; x < cfg.out_w; x++) {
+                    for (int ch = 0; ch < valid_channels; ch++) {
+                        int src_idx = (y * cfg.out_w + x) * 8 + ch;
+                        int dst_idx = (y * cfg.out_w + x) * cfg.cout + global_og * 8 + ch;
+                        layer_output[dst_idx] = og_output_ptr[src_idx];
+                    }
                 }
             }
         }
@@ -289,8 +293,8 @@ int main(int argc, char* argv[]) {
         std::vector<uint8_t> layer_output;
         std::vector<uint8_t> layer4_conv_output;
         std::vector<uint8_t> layer7_output;
-        std::vector<uint8_t> layer9_output;  // Detection head 1
-        std::vector<uint8_t> layer12_output; // Detection head 2
+        std::vector<uint8_t> layer9_output;
+        std::vector<uint8_t> layer12_output;
 
         for (int i = 0; i < NUM_LAYERS; i++) {
             const LayerConfig& cfg = LAYERS[i];
@@ -325,20 +329,13 @@ int main(int argc, char* argv[]) {
 
             run_layer(device, kernel, cfg, pixels, layer_output, layer_dir);
 
-            // Save intermediate outputs
             if (i == 4) {
                 std::string layer4_conv_path = g_stimulus_dir + "/layer4_conv.bin";
                 layer4_conv_output = read_binary_file(layer4_conv_path);
             }
-            if (i == 7) {
-                layer7_output = layer_output;
-            }
-            if (i == 9) {
-                layer9_output = layer_output;
-            }
-            if (i == 12) {
-                layer12_output = layer_output;
-            }
+            if (i == 7) layer7_output = layer_output;
+            if (i == 9) layer9_output = layer_output;
+            if (i == 12) layer12_output = layer_output;
 
             std::cout << "Layer " << i << " done" << std::endl;
         }
@@ -348,25 +345,11 @@ int main(int argc, char* argv[]) {
 
         std::cout << "\n=== Inference Complete: " << total_ms << " ms ===" << std::endl;
 
-        // Verify detection heads
         int total_mismatches = 0;
 
-        // Layer 9 verification (13x13x255)
-        std::vector<uint8_t> layer9_expected;
-        std::string layer9_dir = g_stimulus_dir + "/layer9";
-        for (int og = 0; og < 32; og++) {
-            auto expected_og = read_binary_file(layer9_dir + "/expected_og" + std::to_string(og) + ".bin");
-            int valid_ch = std::min(8, 255 - og * 8);
-            for (int y = 0; y < 13; y++) {
-                for (int x = 0; x < 13; x++) {
-                    for (int ch = 0; ch < valid_ch; ch++) {
-                        layer9_expected.push_back(expected_og[(y * 13 + x) * 8 + ch]);
-                    }
-                }
-            }
-        }
-        // Reconstruct expected in same format as layer9_output
+        // Verify Layer 9 (13x13x255)
         std::vector<uint8_t> layer9_exp_full(13 * 13 * 255);
+        std::string layer9_dir = g_stimulus_dir + "/layer9";
         for (int og = 0; og < 32; og++) {
             auto expected_og = read_binary_file(layer9_dir + "/expected_og" + std::to_string(og) + ".bin");
             int valid_ch = std::min(8, 255 - og * 8);
@@ -383,7 +366,7 @@ int main(int argc, char* argv[]) {
         total_mismatches += verify_output(layer9_output.data(), layer9_exp_full.data(),
                                           layer9_output.size(), 3, "Detection Head 1 (Layer 9, 13x13x255)");
 
-        // Layer 12 verification (26x26x255)
+        // Verify Layer 12 (26x26x255)
         std::vector<uint8_t> layer12_exp_full(26 * 26 * 255);
         std::string layer12_dir = g_stimulus_dir + "/layer12";
         for (int og = 0; og < 32; og++) {
@@ -402,7 +385,6 @@ int main(int argc, char* argv[]) {
         total_mismatches += verify_output(layer12_output.data(), layer12_exp_full.data(),
                                           layer12_output.size(), 3, "Detection Head 2 (Layer 12, 26x26x255)");
 
-        // Save outputs to files
         std::string out_dir = g_stimulus_dir;
         std::ofstream det1(out_dir + "/detection_head1.bin", std::ios::binary);
         det1.write(reinterpret_cast<char*>(layer9_output.data()), layer9_output.size());
@@ -416,14 +398,13 @@ int main(int argc, char* argv[]) {
         std::cout << "  " << out_dir << "/detection_head1.bin (13x13x255)" << std::endl;
         std::cout << "  " << out_dir << "/detection_head2.bin (26x26x255)" << std::endl;
 
-        // Post-processing: decode bounding boxes and apply NMS
         auto postproc_start = std::chrono::high_resolution_clock::now();
         std::vector<BBox> detections = yolo_postprocess(
-            layer9_output.data(),   // 13x13x255 detection head 1
-            layer12_output.data(),  // 26x26x255 detection head 2
-            416,                    // input image size
-            0.25f,                  // confidence threshold
-            0.45f                   // NMS IoU threshold
+            layer9_output.data(),
+            layer12_output.data(),
+            416,
+            0.25f,
+            0.45f
         );
         auto postproc_end = std::chrono::high_resolution_clock::now();
         auto postproc_ms = std::chrono::duration_cast<std::chrono::milliseconds>(postproc_end - postproc_start).count();

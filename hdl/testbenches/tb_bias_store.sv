@@ -19,10 +19,12 @@ module tb_bias_store;
     logic        clk, rst;
     logic        wr_en;
     logic [127:0] wr_data;
+    logic        wr_addr_rst;
     logic        rd_en;
     logic [ADDR_WIDTH-2:0] rd_group;
     logic [31:0] bias_out [0:7];
     logic        rd_valid;
+    logic        wr_overflow;
 
     // Error counter
     int errors = 0;
@@ -30,6 +32,8 @@ module tb_bias_store;
     bias_store #(
         .MAX_DEPTH(MAX_DEPTH)
     ) dut (.*);
+
+    initial wr_addr_rst = 0;
 
     // Clock
     initial clk = 0;

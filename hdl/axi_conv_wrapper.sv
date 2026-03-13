@@ -123,33 +123,47 @@ typedef enum logic [2:0] {
     ST_LOAD_BIAS    = 3'd3,
     ST_START        = 3'd4,
     ST_PROCESS      = 3'd5,
-    ST_DONE         = 3'd6
+    ST_DONE         = 3'd6,
+    ST_ERROR        = 3'd7
 } state_t;
 
 state_t state, state_next;
+
+// Watchdog: resets on state transitions, triggers ST_ERROR on timeout
+localparam WATCHDOG_BITS = 24;  // ~84ms at 200MHz
+localparam WATCHDOG_TIMEOUT = (1 << WATCHDOG_BITS) - 1;
+logic [WATCHDOG_BITS-1:0] watchdog_cnt;
+logic                     watchdog_timeout;
 
 // Multi-OG batching: process multiple output groups per kernel invocation
 logic [7:0]  og_count;
 wire         og_last = (og_count >= cfg_co_groups[7:0] - 8'd1);
 
-// Pre-computed addresses (timing fix: all arithmetic in registered stage)
-// FSM does simple copy, avoiding FSM→multiplier→adder→reg path
-logic [63:0] weight_full_addr_r;
-logic [63:0] bias_full_addr_r;
-logic [63:0] output_full_addr_r;
+logic [63:0] weight_addr_accum;
+logic [63:0] bias_addr_accum;
+logic [63:0] output_addr_accum;
+
+wire [31:0] weight_bytes_per_og = {22'b0, cfg_ci_groups[9:0]} << 10;
+
+// Round up num_outputs to next 4K boundary to prevent AXI 4K boundary crossings
+wire [31:0] output_stride_4k = {num_outputs[31:12] + {20'b0, |num_outputs[11:0]}, 12'b0};
 
 always_ff @(posedge ap_clk) begin
-    if (areset) begin
-        weight_full_addr_r <= '0;
-        bias_full_addr_r   <= '0;
-        output_full_addr_r <= '0;
-    end else begin
-        weight_full_addr_r <= weights_addr_axi + ({32'b0, og_count} * {32'b0, num_weights});
-        bias_full_addr_r   <= bias_addr_axi + ({32'b0, og_count} * {32'b0, num_bias});
-        output_full_addr_r <= output_addr_axi + ({32'b0, og_count} * {32'b0, num_outputs});
+    if (areset || ap_start_pulse) begin
+        weight_addr_accum <= weights_addr_axi;
+        bias_addr_accum   <= bias_addr_axi;
+        output_addr_accum <= output_addr_axi;
+    end else if (state == ST_DONE && !og_last) begin
+        weight_addr_accum <= weight_addr_accum + {32'b0, weight_bytes_per_og};
+        bias_addr_accum   <= bias_addr_accum + 64'd32;
+        output_addr_accum <= output_addr_accum + {32'b0, output_stride_4k};
     end
 end
 
+(* ASYNC_REG = "TRUE", KEEP = "yes" *)
+logic areset_sync_ff1;
+(* ASYNC_REG = "TRUE", KEEP = "yes" *)
+logic areset_sync_ff2;
 (* KEEP = "yes" *)
 logic areset;
 logic ap_start_r, ap_start_pulse;
@@ -198,8 +212,10 @@ logic        bias_wr_addr_rst, wt_wr_addr_rst;
 logic        loading_weights, loading_bias;
 
 always_ff @(posedge ap_clk) begin
-    areset     <= ~ap_rst_n;
-    ap_start_r <= ap_start;
+    areset_sync_ff1 <= ~ap_rst_n;
+    areset_sync_ff2 <= areset_sync_ff1;
+    areset          <= areset_sync_ff2;
+    ap_start_r      <= ap_start;
 end
 assign ap_start_pulse = ap_start & ~ap_start_r;
 
@@ -213,8 +229,8 @@ always_ff @(posedge ap_clk) begin
 end
 
 // Datapath reset: clears maxpool buffers between OG iterations
-localparam RESET_CYCLES = 8;
-logic [3:0] reset_cnt;
+localparam RESET_CYCLES = 16;
+logic [4:0] reset_cnt;
 logic       datapath_rst, reset_done;
 
 always_ff @(posedge ap_clk) begin
@@ -258,16 +274,47 @@ always_ff @(posedge ap_clk) begin
         state <= state_next;
 end
 
+// Watchdog counter: resets on state transitions, saturates in active states
+always_ff @(posedge ap_clk) begin
+    if (areset) begin
+        watchdog_cnt     <= '0;
+        watchdog_timeout <= 1'b0;
+    end else if (state != state_next || state == ST_IDLE || state == ST_START) begin
+        watchdog_cnt     <= '0;
+        watchdog_timeout <= 1'b0;
+    end else if (state == ST_LOAD_WEIGHTS || state == ST_LOAD_BIAS || state == ST_PROCESS) begin
+        if (watchdog_cnt < WATCHDOG_TIMEOUT)
+            watchdog_cnt <= watchdog_cnt + 1;
+        else
+            watchdog_timeout <= 1'b1;
+    end
+end
+
 always_comb begin
     state_next = state;
     case (state)
         ST_IDLE:         if (ap_start_pulse) state_next = ST_RESET;
-        ST_RESET:        if (reset_done) state_next = ST_LOAD_WEIGHTS;
-        ST_LOAD_WEIGHTS: if ((wb_rd_done || wb_rd_done_latch) && wt_unpack_done) state_next = ST_LOAD_BIAS;
-        ST_LOAD_BIAS:    if ((wb_rd_done || wb_rd_done_latch) && bias_load_done) state_next = ST_START;
-        ST_START:        state_next = ST_PROCESS;
-        ST_PROCESS:      if (conv_done_latch && out_wr_done_latch) state_next = ST_DONE;
+        ST_RESET: begin
+            if (reset_done)
+                state_next = ST_LOAD_WEIGHTS;
+        end
+        ST_LOAD_WEIGHTS: begin
+            if (watchdog_timeout) state_next = ST_ERROR;
+            else if ((wb_rd_done || wb_rd_done_latch) && wt_unpack_done) state_next = ST_LOAD_BIAS;
+        end
+        ST_LOAD_BIAS: begin
+            if (watchdog_timeout) state_next = ST_ERROR;
+            else if ((wb_rd_done || wb_rd_done_latch) && bias_load_done) state_next = ST_START;
+        end
+        ST_START: begin
+            if (!datapath_rst) state_next = ST_PROCESS;
+        end
+        ST_PROCESS: begin
+            if (watchdog_timeout) state_next = ST_ERROR;
+            else if (conv_done_latch && out_wr_done_latch && px_rd_done_latch) state_next = ST_DONE;
+        end
         ST_DONE:         state_next = og_last ? ST_IDLE : ST_RESET;
+        ST_ERROR:        state_next = ST_IDLE;
         default:         state_next = ST_IDLE;
     endcase
 end
@@ -286,7 +333,7 @@ always_ff @(posedge ap_clk) begin
     if (areset)
         ap_done_r <= 1'b0;
     else
-        ap_done_r <= (state == ST_DONE) && og_last;
+        ap_done_r <= ((state == ST_DONE) && og_last) || (state == ST_ERROR);
 end
 assign ap_done  = ap_done_r;
 assign ap_ready = ap_done;
@@ -314,10 +361,9 @@ always_ff @(posedge ap_clk) begin
             end
 
             ST_RESET: begin
-                // Wait reset_cnt>1 for full_addr_r to be valid after og_count change
                 if (!wb_addr_weight_set && reset_cnt > 4'd1) begin
-                    wb_rd_addr <= weight_full_addr_r;
-                    wb_rd_size <= num_weights;
+                    wb_rd_addr <= weight_addr_accum;
+                    wb_rd_size <= weight_bytes_per_og;
                     wb_addr_weight_set <= 1'b1;
                 end
                 if (reset_done && wb_addr_weight_set) begin
@@ -329,8 +375,8 @@ always_ff @(posedge ap_clk) begin
 
             ST_LOAD_WEIGHTS: begin
                 if (!wb_addr_bias_set) begin
-                    wb_rd_addr <= bias_full_addr_r;
-                    wb_rd_size <= num_bias;
+                    wb_rd_addr <= bias_addr_accum;
+                    wb_rd_size <= 32'd32;
                     wb_addr_bias_set <= 1'b1;
                 end
                 if ((wb_rd_done || wb_rd_done_latch) && wt_unpack_done && wb_addr_bias_set) begin
@@ -365,7 +411,7 @@ always_ff @(posedge ap_clk) begin
         px_rd_size  <= '0;
     end else begin
         px_rd_start <= 1'b0;
-        if (state == ST_START) begin
+        if (state == ST_START && !datapath_rst) begin
             px_rd_start <= 1'b1;
             px_rd_addr  <= pixels_addr_axi;
             px_rd_size  <= num_pixels;
@@ -373,7 +419,6 @@ always_ff @(posedge ap_clk) begin
     end
 end
 
-// Output write master: addr set in ST_LOAD_BIAS (before ST_START pulse)
 always_ff @(posedge ap_clk) begin
     if (areset) begin
         out_wr_start <= 1'b0;
@@ -381,16 +426,16 @@ always_ff @(posedge ap_clk) begin
         out_wr_size  <= '0;
     end else begin
         out_wr_start <= 1'b0;
-        if (state == ST_LOAD_BIAS) begin
-            out_wr_addr <= output_full_addr_r;
+        if (state == ST_RESET && reset_cnt > 4'd1) begin
+            out_wr_addr <= output_addr_accum;
             out_wr_size <= num_outputs;
         end
-        if (state == ST_START)
+        if (state == ST_START && !datapath_rst)
             out_wr_start <= 1'b1;
     end
 end
 
-assign conv_go = (state == ST_START);
+assign conv_go = (state == ST_START) && !datapath_rst;
 
 always_ff @(posedge ap_clk) begin
     if (areset)
@@ -410,9 +455,18 @@ always_ff @(posedge ap_clk) begin
         out_wr_done_latch <= 1'b1;
 end
 
+logic px_rd_done_latch;
+always_ff @(posedge ap_clk) begin
+    if (areset)
+        px_rd_done_latch <= 1'b0;
+    else if (state == ST_START)
+        px_rd_done_latch <= 1'b0;
+    else if (px_rd_done)
+        px_rd_done_latch <= 1'b1;
+end
+
 assign wt_wr_addr_rst   = (state == ST_RESET) && reset_done;
-// Bias addr reset only on first OG; subsequent OGs accumulate addresses
-assign bias_wr_addr_rst = (state == ST_LOAD_WEIGHTS) && (wb_rd_done || wb_rd_done_latch) && wt_unpack_done && (og_count == 8'd0);
+assign bias_wr_addr_rst = (state == ST_LOAD_WEIGHTS) && (wb_rd_done || wb_rd_done_latch) && wt_unpack_done;
 
 assign bias_wr_en   = loading_bias && wb_axis_tvalid && wb_axis_tready;
 assign bias_wr_data = wb_axis_tdata;
@@ -481,9 +535,9 @@ always_ff @(posedge ap_clk) begin
         wt_total_bytes_reg   <= '0;
         bias_total_bytes_reg <= '0;
     end else if (loading_weights_rise)
-        wt_total_bytes_reg <= num_weights;
+        wt_total_bytes_reg <= weight_bytes_per_og;
     else if (loading_bias_rise)
-        bias_total_bytes_reg <= num_bias;
+        bias_total_bytes_reg <= 32'd32;
 end
 
 always_ff @(posedge ap_clk) begin
@@ -632,8 +686,8 @@ conv_top u_conv_top (
     .clk              (ap_clk),
     .rst              (datapath_rst),
     .cfg_ci_groups    (cfg_ci_groups[9:0]),
-    .cfg_output_group (og_count[6:0]),
-    .cfg_wt_base_addr (cfg_wt_base_addr[11:0]),
+    .cfg_output_group (7'd0),
+    .cfg_wt_base_addr (12'd0),
     .cfg_in_channels  (cfg_in_channels[15:0]),
     .cfg_img_width    (cfg_img_width[15:0]),
     .cfg_use_maxpool  (cfg_use_maxpool[0]),
