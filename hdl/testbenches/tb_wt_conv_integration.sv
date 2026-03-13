@@ -4,7 +4,7 @@ module tb_wt_conv_integration;
 
     localparam DEPTH = 4096;
     localparam ADDR_WIDTH = $clog2(DEPTH);
-    localparam WT_LATENCY = 3;
+    localparam WT_LATENCY = 4;
 
     logic clk, rst;
 
@@ -24,10 +24,11 @@ module tb_wt_conv_integration;
     logic [31:0] outs [0:7];
     logic        data_valid;
 
-    // pixel delay pipeline (3 stages, matching WT_LATENCY)
+    // pixel delay pipeline (4 stages, matching WT_LATENCY)
     logic [63:0] pixel_d0 [0:2][0:2];
     logic [63:0] pixel_d1 [0:2][0:2];
     logic [63:0] pixel_d2 [0:2][0:2];
+    logic [63:0] pixel_d3 [0:2][0:2];
 
     always_ff @(posedge clk) begin
         if (rst) begin
@@ -36,11 +37,13 @@ module tb_wt_conv_integration;
                     pixel_d0[r][c] <= '0;
                     pixel_d1[r][c] <= '0;
                     pixel_d2[r][c] <= '0;
+                    pixel_d3[r][c] <= '0;
                 end
         end else begin
             pixel_d0 <= pixels;
             pixel_d1 <= pixel_d0;
             pixel_d2 <= pixel_d1;
+            pixel_d3 <= pixel_d2;
         end
     end
 
@@ -74,7 +77,7 @@ module tb_wt_conv_integration;
         .rst          (rst),
         .valid_in     (valid_dly[WT_LATENCY-1]),
         .last_channel (lastch_dly[WT_LATENCY-1]),
-        .pixels       (pixel_d2),
+        .pixels       (pixel_d3),
         .weights      (weights),
         .biases       (biases),
         .outs         (outs),

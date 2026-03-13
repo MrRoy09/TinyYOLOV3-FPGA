@@ -1,7 +1,7 @@
 module conv_controller #(
     parameter WT_ADDR_WIDTH   = 12,
     parameter BIAS_ADDR_WIDTH = 7,
-    parameter WT_LATENCY      = 3,
+    parameter WT_LATENCY      = 4,
     parameter CONV_PE_PIPE    = 4,  // 4 stages after timing fix
     parameter QUANT_LATENCY   = 4,
     parameter MAXPOOL_LATENCY = 4,

@@ -4,7 +4,7 @@ module tb_conv_controller;
 
     localparam WT_ADDR_WIDTH   = 12;
     localparam BIAS_ADDR_WIDTH = 7;
-    localparam WT_LATENCY      = 3;
+    localparam WT_LATENCY      = 4;
 
     localparam CI_GROUPS  = 16;
     localparam CO_GROUPS  = 32;

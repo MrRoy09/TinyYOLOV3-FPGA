@@ -25,6 +25,7 @@ generate
         (* ram_style = "ultra" *)
         logic [71:0] memory [0:DEPTH-1];
         logic [71:0] rdata_pipe[0:2];
+        logic [ADDR_WIDTH-1:0] raddr_reg;
 
         always_ff @(posedge clk) begin
             if(wen[i]) begin
@@ -33,14 +34,17 @@ generate
         end
 
         always_ff @(posedge clk) begin
+            if (ren[i])
+                raddr_reg <= raddr;
+        end
+
+        always_ff @(posedge clk) begin
             if (rst) begin
                 rdata_pipe[0] <= '0;
                 rdata_pipe[1] <= '0;
                 rdata_pipe[2] <= '0;
             end else begin
-                if (ren[i]) begin
-                    rdata_pipe[0] <= memory[raddr];
-                end
+                rdata_pipe[0] <= memory[raddr_reg];
                 rdata_pipe[1] <= rdata_pipe[0];
                 rdata_pipe[2] <= rdata_pipe[1];
             end

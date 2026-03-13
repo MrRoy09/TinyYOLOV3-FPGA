@@ -16,7 +16,7 @@ module tb_conv_top_batch;
     localparam WT_ADDR_WIDTH   = $clog2(WT_DEPTH);
     localparam BIAS_DEPTH      = 256;
     localparam BIAS_GROUP_BITS = $clog2(BIAS_DEPTH) - 1;
-    localparam WT_LATENCY      = 3;
+    localparam WT_LATENCY      = 4;
     localparam CONV_PE_PIPE    = 4;  // Updated for timing fix
 
     // Small test: 4x4 padded to 6x6, similar to Layer 2 structure

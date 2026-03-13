@@ -12,7 +12,7 @@ module tb_conv_top_multi_og;
     localparam WT_ADDR_WIDTH   = $clog2(WT_DEPTH);
     localparam BIAS_DEPTH      = 256;
     localparam BIAS_GROUP_BITS = $clog2(BIAS_DEPTH) - 1;
-    localparam WT_LATENCY      = 3;
+    localparam WT_LATENCY      = 4;
     localparam CONV_PE_PIPE    = 4;
 
     // Layer 2 config (simplified: 8x8 spatial instead of 52x52 for faster sim)

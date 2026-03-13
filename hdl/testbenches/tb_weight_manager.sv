@@ -20,7 +20,7 @@ module tb_weight_manager;
     localparam CI_GROUPS = CIN / 8;
     localparam CO_GROUPS = COUT / 8;
     localparam TOTAL = CO_GROUPS * CI_GROUPS;
-    localparam PIPE  = 3;  // weight_bank read latency
+    localparam PIPE  = 4;  // weight_bank read latency
 
     weight_manager #(
         .DEPTH(DEPTH)

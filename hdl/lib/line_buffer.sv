@@ -26,7 +26,7 @@ initial begin
     for (int i = 0; i < MAX_WIDTH; i++) line[i] = '0;
 end
 
-logic [$clog2(MAX_WIDTH)-1:0] wrPtr;
+(* max_fanout = 512 *) logic [$clog2(MAX_WIDTH)-1:0] wrPtr;
 
 always_ff @(posedge clk) begin
     if (rst) begin

@@ -43,15 +43,15 @@ end
 
 // ── Read: 3-cycle latency pipeline (matches conv_pe pipeline) ──
 
-logic [2:0] ready_pipe;
+logic [3:0] ready_pipe;
 
-assign data_ready = ready_pipe[2];
+assign data_ready = ready_pipe[3];
 
 always_ff @(posedge clk) begin
     if (rst)
-        ready_pipe <= 3'b0;
+        ready_pipe <= 4'b0;
     else
-        ready_pipe <= {ready_pipe[1:0], rd_en};
+        ready_pipe <= {ready_pipe[2:0], rd_en};
 end
 
 // ── 8 weight banks ──

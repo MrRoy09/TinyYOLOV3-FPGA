@@ -4,7 +4,7 @@ module conv_top #(
     parameter WT_ADDR_WIDTH   = $clog2(WT_DEPTH),
     parameter BIAS_DEPTH      = 256,
     parameter BIAS_GROUP_BITS = $clog2(BIAS_DEPTH) - 1,
-    parameter WT_LATENCY      = 3,
+    parameter WT_LATENCY      = 4,
     parameter CONV_PE_PIPE    = 4
 )(
     input  logic        clk,
@@ -67,7 +67,7 @@ logic                        last_pixel;
 assign pixel_valid_mux = cfg_kernel_1x1 ? pixel_in_valid : kw_dout_valid;
 assign last_pixel      = cfg_kernel_1x1 ? pixel_in_last  : (pixel_in_last & kw_dout_valid);
 
-// Pixel pipeline: 3-stage delay to match weight latency
+// Pixel pipeline: 3 delay stages + registered mux = 4 total (matches WT_LATENCY=4)
 logic [63:0] pixel_3x3_d0 [0:2][0:2];
 logic [63:0] pixel_3x3_d1 [0:2][0:2];
 logic [63:0] pixel_3x3_d2 [0:2][0:2];
@@ -104,15 +104,22 @@ always_ff @(posedge clk) begin
     end
 end
 
+// Registered pixel mux: 4th pipeline stage
 logic [63:0] pixel_mux [0:2][0:2];
 
-always_comb begin
-    if (cfg_kernel_1x1) begin
+always_ff @(posedge clk) begin
+    if (rst) begin
         for (int r = 0; r < 3; r++)
             for (int c = 0; c < 3; c++)
-                pixel_mux[r][c] = (r == 1 && c == 1) ? pixel_1x1_d3 : 64'b0;
+                pixel_mux[r][c] <= '0;
     end else begin
-        pixel_mux = pixel_3x3_d2;
+        if (cfg_kernel_1x1) begin
+            for (int r = 0; r < 3; r++)
+                for (int c = 0; c < 3; c++)
+                    pixel_mux[r][c] <= (r == 1 && c == 1) ? pixel_1x1_d3 : 64'b0;
+        end else begin
+            pixel_mux <= pixel_3x3_d2;
+        end
     end
 end
 
