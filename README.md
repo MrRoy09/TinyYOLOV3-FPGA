@@ -4,9 +4,9 @@ A high-performance FPGA accelerator for real-time TinyYOLOv3 object detection on
 
 ## Results
 
-- **448x speedup** over ARM Cortex-A53 CPU baseline
+- **10.5x speedup** over optimized ARM Cortex-A53 (im2col + NEON + 4-thread)
 - **~16 FPS** inference throughput (61ms per frame)
-- **61ms** inference latency (vs 27.3s on CPU)
+- **61ms** FPGA inference vs 640ms optimized ARM vs 27.3s naive ARM
 - **INT8 quantization** calibrated on 100 COCO val2017 images
 - **Real-time camera demo** with EMA-smoothed bounding box tracking
 
@@ -41,7 +41,8 @@ arm-bharat/
 ├── host/                   # CPU host code
 │   ├── yolo_inference.cpp  # FPGA inference driver
 │   ├── yolo_camera.cpp     # Live camera demo with tracking
-│   ├── yolo_arm_native.cpp # ARM CPU baseline
+│   ├── yolo_arm_native.cpp # ARM CPU baseline (naive)
+│   ├── yolo_arm_optimized.cpp # ARM CPU optimized (im2col+NEON+MT)
 │   └── yolo_postprocess.hpp # Detection decoding & NMS
 ├── scripts/                # Stimulus generation & utilities
 │   └── prepare_full_inference.py  # Generate FPGA stimulus
@@ -127,10 +128,13 @@ make clean
 
 ## Performance Summary
 
-| Implementation | Inference Time | FPS | Speedup |
+| Implementation | Inference (ms) | FPS | Speedup |
 |----------------|----------------|-----|---------|
-| Naive ARM Cortex-A53 | 27,339 ms | 0.037 | 1x |
-| **FPGA @ 250 MHz** | **61 ms** | **~16** | **448x** |
+| Naive ARM (single-thread, no SIMD) | 27,339 | 0.037 | 1x |
+| Optimized ARM (im2col + NEON + 4-thread) | 640 | 1.6 | 43x |
+| **FPGA @ 250 MHz** | **61** | **~16** | **448x** |
+
+All three implementations use identical INT8 quantization parameters and produce the same detections.
 
 ### Per-Layer Breakdown (FPGA @ 250 MHz)
 

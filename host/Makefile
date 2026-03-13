@@ -1,28 +1,25 @@
 # Makefile for TinyYOLOv3 host programs
 #
 # Usage:
-#   make arm              - Build ARM-native inference (no FPGA required)
+#   make arm              - Build ARM inference programs (no FPGA required)
 #   make fpga             - Build FPGA host programs (requires XRT)
-#   make all              - Build everything (requires XRT)
-#   make yolo_arm_native  - Build just ARM-native inference
+#   make all              - Build ARM targets
 #
-# For benchmarking ARM vs FPGA:
-#   1. Build ARM version:  make arm
-#   2. Export weights:     python3 export_weights_for_cpu.py
-#   3. Run ARM inference:  ./yolo_arm_native weights_cpu test.jpg --benchmark 100
-#   4. Compare with FPGA:  ./yolo_inference <xclbin> <weights> test.jpg
+# Benchmarking ARM vs FPGA:
+#   1. Export weights:     python3 export_weights_for_cpu.py ../sim/hardware-ai/quantized_params.npz ./weights_cpu
+#   2. Naive baseline:     ./yolo_arm_native weights_cpu test.jpg
+#   3. Optimized ARM:      ./yolo_arm_optimized weights_cpu test.jpg --benchmark 5
+#   4. FPGA:               ./yolo_inference <xclbin> <weights> test.jpg --profile
 
 CXX := g++
 CXXFLAGS := -std=c++17 -O3 -march=native -ffast-math -funroll-loops -g -Wall
 
 # XRT paths (only used for FPGA targets)
-# Detect XRT: prefer XILINX_XRT env var, fallback to system-wide install (Kria)
 ifdef XILINX_XRT
     XRT_INCLUDES := -I$(XILINX_XRT)/include
     XRT_LDFLAGS := -L$(XILINX_XRT)/lib
     XRT_LDLIBS := -lxrt_coreutil -luuid -lpthread
 else ifneq ($(wildcard /usr/include/xrt/xrt/xrt_bo.h),)
-    # System-wide XRT (e.g. Kria Ubuntu packages) — headers under /usr/include/xrt/
     XRT_INCLUDES := -I/usr/include/xrt
     XRT_LDFLAGS :=
     XRT_LDLIBS := -lxrt_coreutil -luuid -lpthread
@@ -33,31 +30,24 @@ else
     XRT_LDLIBS :=
 endif
 
-# OpenCV flags — try pkg-config first, fallback to known paths
+# OpenCV flags
 OPENCV_CFLAGS := $(shell pkg-config --cflags opencv4 2>/dev/null || echo "-I/usr/include/opencv4")
 OPENCV_LIBS := $(shell pkg-config --libs opencv4 2>/dev/null || echo "-lopencv_core -lopencv_imgcodecs -lopencv_imgproc")
 
 # Target lists
-FPGA_TARGETS := test_layer0_416 test_layer0_full test_layer01_chain test_layers_chain test_inference yolo_inference yolo_camera
-ARM_TARGETS := yolo_arm_native
+FPGA_TARGETS := test_layers_chain test_inference yolo_inference yolo_camera
+ARM_TARGETS := yolo_arm_native yolo_arm_optimized
 
 .PHONY: all arm fpga clean help
 
-# Default: build ARM (no XRT required)
 all: arm
 	@echo ""
-	@echo "ARM-native targets built. For FPGA targets, run: make fpga"
+	@echo "ARM targets built. For FPGA targets: make fpga"
 
-# Build ARM-native targets (no FPGA/XRT required)
 arm: $(ARM_TARGETS)
 	@echo ""
-	@echo "ARM-native inference built successfully!"
-	@echo "Usage: ./yolo_arm_native <weights_dir> <image.jpg>"
-	@echo ""
-	@echo "First export weights:"
-	@echo "  python3 export_weights_for_cpu.py ../sim/hardware-ai/quantized_params.npz ./weights_cpu"
+	@echo "ARM inference built: yolo_arm_native (naive), yolo_arm_optimized (im2col+NEON+MT)"
 
-# Build FPGA targets (requires XRT)
 fpga: check_xrt $(FPGA_TARGETS)
 
 check_xrt:
@@ -66,37 +56,20 @@ ifndef XILINX_XRT
 endif
 
 # ============================================================================
-# ARM-Native Targets (no XRT dependency)
+# ARM Targets (no XRT dependency)
 # ============================================================================
 
-# ARM-native inference - optimized for Cortex-A53/A72
 yolo_arm_native: yolo_arm_native.cpp yolo_postprocess.hpp
-	$(CXX) -std=c++17 -O3 -march=native -ffast-math -funroll-loops -g -Wall \
-		$(OPENCV_CFLAGS) \
-		-o $@ $< \
-		$(OPENCV_LIBS) -lpthread
-	@echo "Built: $@"
+	$(CXX) $(CXXFLAGS) $(OPENCV_CFLAGS) -o $@ $< $(OPENCV_LIBS) -lpthread
+	@echo "Built: $@ (naive reference)"
 
-# Cross-compile for ARM (when building on x86 host for Kria target)
-yolo_arm_native_cross: yolo_arm_native.cpp yolo_postprocess.hpp
-	aarch64-linux-gnu-g++ -std=c++17 -O3 -march=armv8-a+simd -mtune=cortex-a53 \
-		-ffast-math -funroll-loops -g -Wall \
-		$(OPENCV_CFLAGS) \
-		-o $@ $< \
-		$(OPENCV_LIBS) -lpthread
+yolo_arm_optimized: yolo_arm_optimized.cpp yolo_postprocess.hpp
+	$(CXX) $(CXXFLAGS) $(OPENCV_CFLAGS) -o $@ $< $(OPENCV_LIBS) -lpthread
+	@echo "Built: $@ (im2col + NEON + 4-thread)"
 
 # ============================================================================
 # FPGA Targets (require XRT)
 # ============================================================================
-
-test_layer0_416: test_layer0_416.cpp
-	$(CXX) $(CXXFLAGS) $(XRT_INCLUDES) -o $@ $< $(XRT_LDFLAGS) $(XRT_LDLIBS)
-
-test_layer0_full: test_layer0_full.cpp
-	$(CXX) $(CXXFLAGS) $(XRT_INCLUDES) -o $@ $< $(XRT_LDFLAGS) $(XRT_LDLIBS)
-
-test_layer01_chain: test_layer01_chain.cpp
-	$(CXX) $(CXXFLAGS) $(XRT_INCLUDES) -o $@ $< $(XRT_LDFLAGS) $(XRT_LDLIBS)
 
 test_layers_chain: test_layers_chain.cpp
 	$(CXX) $(CXXFLAGS) $(XRT_INCLUDES) -o $@ $< $(XRT_LDFLAGS) $(XRT_LDLIBS)
@@ -115,18 +88,16 @@ yolo_camera: yolo_camera.cpp yolo_postprocess.hpp
 # ============================================================================
 
 clean:
-	rm -f $(FPGA_TARGETS) $(ARM_TARGETS) yolo_arm_native_cross
+	rm -f $(FPGA_TARGETS) $(ARM_TARGETS)
 
 help:
-	@echo "TinyYOLOv3 Host Programs Makefile"
+	@echo "TinyYOLOv3 Host Programs"
 	@echo ""
 	@echo "Targets:"
-	@echo "  make arm          - Build ARM-native inference (no FPGA required)"
-	@echo "  make fpga         - Build FPGA host programs (requires XRT)"
-	@echo "  make all          - Same as 'make arm'"
-	@echo "  make clean        - Remove built binaries"
+	@echo "  make arm     - Build ARM inference (naive + optimized)"
+	@echo "  make fpga    - Build FPGA programs (requires XRT)"
+	@echo "  make clean   - Remove binaries"
 	@echo ""
-	@echo "ARM-native benchmarking:"
-	@echo "  1. make arm"
-	@echo "  2. python3 export_weights_for_cpu.py"
-	@echo "  3. ./yolo_arm_native weights_cpu test.jpg --benchmark 100"
+	@echo "ARM benchmarking:"
+	@echo "  1. python3 export_weights_for_cpu.py ../sim/hardware-ai/quantized_params.npz ./weights_cpu"
+	@echo "  2. ./yolo_arm_optimized weights_cpu test.jpg --benchmark 5"

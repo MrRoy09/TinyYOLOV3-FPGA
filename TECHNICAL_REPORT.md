@@ -119,11 +119,36 @@ Testing was performed with various input images resized to 416×416. Both ARM CP
 
 ### 5.2 Latency Comparison
 
-| Stage | ARM CPU | FPGA @ 250 MHz | Speedup |
-|-------|---------|----------------|---------|
-| Preprocessing | 38 ms | 126 ms (OpenCV resize) | — |
-| Inference | 27,339 ms | 61 ms | 448× |
-| Post-processing | <1 ms | <1 ms | ~1× |
+Three implementations are compared, all using identical INT8 quantization parameters:
+
+| Implementation | Inference (ms) | FPS | vs Naive | vs FPGA |
+|----------------|----------------|-----|----------|---------|
+| Naive ARM (single-thread, no SIMD) | 27,339 | 0.037 | 1× | 448× slower |
+| Optimized ARM (im2col + NEON + 4-thread) | 640 | 1.6 | 43× | 10.5× slower |
+| **FPGA @ 250 MHz** | **61** | **~16** | **448×** | **1×** |
+
+The optimized ARM implementation uses im2col to convert convolutions to matrix multiplications, NEON SIMD for INT8 dot products (vmull_s8 + vpadalq_s16), and 4-thread parallelism across all Cortex-A53 cores. This represents a realistic upper bound for CPU performance on this platform.
+
+#### Optimized ARM Per-Layer Breakdown
+
+| Layer | Cin→Cout | ARM Optimized (ms) | FPGA (ms) | Ratio |
+|-------|----------|-------------------|-----------|-------|
+| 0 | 3→16 | 98 | 6 | 16× |
+| 1 | 16→32 | 98 | 4 | 25× |
+| 2 | 32→64 | 63 | 3 | 21× |
+| 3 | 64→128 | 44 | 2 | 22× |
+| 4 | 128→256 | 34 | 3 | 11× |
+| 5 | 256→512 | 31 | 4 | 8× |
+| 6 | 512→1024 | 111 | 12 | 9× |
+| 7 | 1024→256 | 8 | 4 | 2× |
+| 8 | 256→512 | 30 | 3 | 10× |
+| 9 | 512→255 | 4 | 2 | 2× |
+| 10 | 256→128 | 1 | 1 | 1× |
+| 11 | 384→256 | 109 | 7 | 16× |
+| 12 | 256→255 | 8 | 4 | 2× |
+| **Total** | | **640** | **61** | **10.5×** |
+
+The FPGA advantage is largest for early layers with large spatial dimensions (L0-L2: 16-25×) where the 576 MACs/cycle throughput dominates. For small 1×1 convolutions (L7, L9, L10), the advantage narrows to 1-2× as host-side DMA overhead becomes the bottleneck.
 
 ### 5.3 Per-Layer Breakdown (FPGA @ 250 MHz)
 
@@ -220,26 +245,30 @@ Several optimizations remain for future iterations:
 
 ## 9. Conclusion
 
-The implemented accelerator achieves 448× speedup over an ARM Cortex-A53 baseline, delivering real-time TinyYOLOv3 inference at 61ms latency (~16 FPS) on the Kria KV260 edge platform at 250 MHz. Resource utilization is efficient with 60.6% DSP usage and 100% URAM usage. Detection accuracy is preserved through INT8 quantization calibrated on 100 COCO val2017 images. A live camera demo with EMA-smoothed bounding box tracking demonstrates practical end-to-end object detection at 13-14 FPS. The design validates the feasibility of deploying CNN-based object detection on resource-constrained edge FPGAs.
+The implemented accelerator achieves 10.5× speedup over an optimized ARM Cortex-A53 implementation (im2col + NEON + 4-thread), delivering real-time TinyYOLOv3 inference at 61ms latency (~16 FPS) on the Kria KV260 edge platform at 250 MHz. Compared to a naive CPU baseline, the speedup is 448×. Resource utilization is efficient with 60.6% DSP usage and 100% URAM usage. Detection accuracy is preserved through INT8 quantization calibrated on 100 COCO val2017 images. A live camera demo with EMA-smoothed bounding box tracking demonstrates practical end-to-end object detection at 13-14 FPS. The design validates the feasibility of deploying CNN-based object detection on resource-constrained edge FPGAs.
 
 ---
 
-## Appendix A: ARM CPU Baseline Details
+## Appendix A: ARM CPU Implementation Details
 
-The ARM CPU baseline uses a reference C++ implementation (single-threaded, no SIMD) with direct convolution using 7 nested loops. No NEON vectorization or multi-threading is utilized.
+Two ARM CPU implementations are provided for comparison, both using identical INT8 quantization:
 
-### Potential CPU Optimizations (Not Implemented)
+### A.1 Naive Baseline (`yolo_arm_native`)
 
-| Optimization | Expected Speedup | Complexity |
-|--------------|------------------|------------|
-| Multi-threading (4 cores) | 3-4x | Low |
-| NEON SIMD intrinsics | 4-8x | Medium |
-| im2col + GEMM (OpenBLAS) | 10-20x | Medium |
-| ARM Compute Library | 20-50x | Low |
-| Loop tiling (cache opt) | 1.5-2x | Medium |
-| **Combined** | **50-100x** | High |
+Single-threaded, no SIMD. Direct convolution using 7 nested loops. **27,339 ms** per inference.
 
-With full optimization, ARM could potentially reach ~1-2 FPS, but still ~5-10x slower than FPGA.
+### A.2 Optimized Implementation (`yolo_arm_optimized`)
+
+Applies standard CPU optimization techniques to the same INT8 model. **640 ms** per inference (43× faster than naive).
+
+| Optimization | Technique | Impact |
+|---|---|---|
+| Memory layout | im2col converts conv to GEMM | Cache-friendly, eliminates redundant index computation |
+| SIMD vectorization | NEON INT8: vmull_s8 + vpadalq_s16 | 16 multiply-accumulates per instruction |
+| Multi-threading | 4 threads across Cortex-A53 cores | ~3.5× scaling for compute-bound layers |
+| Compiler | -O3 -march=native -ffast-math | Auto-vectorization, instruction scheduling |
+
+Note: The Cortex-A53 lacks the ARMv8.2 dot product instruction (SDOT), which would provide an additional 2-4× speedup on newer cores (A55, A76+). The 640ms result represents a realistic upper bound for this specific CPU.
 
 ---
 
