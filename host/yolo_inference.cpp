@@ -36,46 +36,62 @@
 
 #include "yolo_postprocess.hpp"
 
-void neon_batch_interleave(const std::vector<std::vector<uint8_t>>& og_outputs,
-                           uint8_t* dst, int num_pixels, int num_ogs, int cout) {
+// Interleave from contiguous scratch buffer (cache-resident) to layer_output
+// Pixel-major fast paths for 2/4 OGs (single pass over dst), OG-major for 8+ OGs
+void neon_interleave_from_scratch(const uint8_t* scratch, size_t og_data_size,
+                                   uint8_t* dst, int dst_pixel_stride,
+                                   int num_pixels, int num_ogs, int og_channel_offset) {
 #ifdef __ARM_NEON
-    if (num_ogs == 2 && cout == 16) {
-        const uint8_t* src0 = og_outputs[0].data();
-        const uint8_t* src1 = og_outputs[1].data();
+    if (num_ogs == 2 && og_channel_offset == 0 && dst_pixel_stride == 16) {
+        const uint8_t* s0 = scratch;
+        const uint8_t* s1 = scratch + og_data_size;
         for (int p = 0; p < num_pixels; p++) {
-            vst1_u8(dst + p * 16, vld1_u8(src0 + p * 8));
-            vst1_u8(dst + p * 16 + 8, vld1_u8(src1 + p * 8));
+            vst1_u8(dst + p * 16, vld1_u8(s0 + p * 8));
+            vst1_u8(dst + p * 16 + 8, vld1_u8(s1 + p * 8));
         }
-    } else if (num_ogs == 4 && cout == 32) {
-        const uint8_t* src0 = og_outputs[0].data();
-        const uint8_t* src1 = og_outputs[1].data();
-        const uint8_t* src2 = og_outputs[2].data();
-        const uint8_t* src3 = og_outputs[3].data();
+    } else if (num_ogs == 4 && og_channel_offset == 0 && dst_pixel_stride == 32) {
+        const uint8_t* s0 = scratch;
+        const uint8_t* s1 = scratch + og_data_size;
+        const uint8_t* s2 = scratch + 2 * og_data_size;
+        const uint8_t* s3 = scratch + 3 * og_data_size;
         for (int p = 0; p < num_pixels; p++) {
-            vst1_u8(dst + p * 32, vld1_u8(src0 + p * 8));
-            vst1_u8(dst + p * 32 + 8, vld1_u8(src1 + p * 8));
-            vst1_u8(dst + p * 32 + 16, vld1_u8(src2 + p * 8));
-            vst1_u8(dst + p * 32 + 24, vld1_u8(src3 + p * 8));
+            vst1_u8(dst + p * 32, vld1_u8(s0 + p * 8));
+            vst1_u8(dst + p * 32 + 8, vld1_u8(s1 + p * 8));
+            vst1_u8(dst + p * 32 + 16, vld1_u8(s2 + p * 8));
+            vst1_u8(dst + p * 32 + 24, vld1_u8(s3 + p * 8));
         }
     } else {
-        for (int p = 0; p < num_pixels; p++) {
-            uint8_t* pixel_dst = dst + p * cout;
-            for (int og = 0; og < num_ogs; og++) {
-                int valid_ch = std::min(8, cout - og * 8);
-                if (valid_ch == 8) {
-                    vst1_u8(pixel_dst + og * 8, vld1_u8(og_outputs[og].data() + p * 8));
-                } else {
-                    std::memcpy(pixel_dst + og * 8, og_outputs[og].data() + p * 8, valid_ch);
+        // OG-major: better for 8+ OGs (sequential source reads per OG)
+        for (int og = 0; og < num_ogs; og++) {
+            const uint8_t* s = scratch + og * og_data_size;
+            int ch_offset = og_channel_offset + og * 8;
+            int valid_ch = std::min(8, dst_pixel_stride - ch_offset);
+            uint8_t* d = dst + ch_offset;
+            if (valid_ch == 8) {
+                for (int p = 0; p < num_pixels; p++) {
+                    vst1_u8(d, vld1_u8(s));
+                    s += 8;
+                    d += dst_pixel_stride;
+                }
+            } else {
+                for (int p = 0; p < num_pixels; p++) {
+                    std::memcpy(d, s, valid_ch);
+                    s += 8;
+                    d += dst_pixel_stride;
                 }
             }
         }
     }
 #else
-    for (int p = 0; p < num_pixels; p++) {
-        uint8_t* pixel_dst = dst + p * cout;
-        for (int og = 0; og < num_ogs; og++) {
-            int valid_ch = std::min(8, cout - og * 8);
-            std::memcpy(pixel_dst + og * 8, og_outputs[og].data() + p * 8, valid_ch);
+    for (int og = 0; og < num_ogs; og++) {
+        const uint8_t* s = scratch + og * og_data_size;
+        int ch_offset = og_channel_offset + og * 8;
+        int valid_ch = std::min(8, dst_pixel_stride - ch_offset);
+        uint8_t* d = dst + ch_offset;
+        for (int p = 0; p < num_pixels; p++) {
+            std::memcpy(d, s, valid_ch);
+            s += 8;
+            d += dst_pixel_stride;
         }
     }
 #endif
@@ -262,7 +278,7 @@ struct InferenceBuffers {
     size_t bias_buf_size;
     size_t pixel_buf_size;
     size_t output_buf_size;
-    std::vector<uint8_t> output_staging;
+    std::vector<uint8_t> scratch;  // contiguous scratch for DMA→cache copy
     bool initialized = false;
 };
 
@@ -359,7 +375,7 @@ void init_buffers(xrt::device& device, xrt::kernel& kernel, InferenceBuffers& bu
     bufs.run.set_arg(21, bufs.pixel_bo);
     bufs.run.set_arg(22, bufs.output_bo);
 
-    bufs.output_staging.assign(bufs.output_buf_size, 0);
+    bufs.scratch.resize(bufs.output_buf_size);
 
     bufs.initialized = true;
     std::cout << "  Double-buffered weight/bias DMA allocated (2x "
@@ -435,11 +451,6 @@ int run_layer(xrt::device& device, const LayerConfig& cfg,
 
     layer_output.resize(cfg.out_h * cfg.out_w * cfg.cout);
 
-    std::vector<std::vector<uint8_t>> og_outputs(cfg.co_groups);
-    size_t og_out_size = num_pixels * 8;
-    for (int og = 0; og < cfg.co_groups; og++)
-        og_outputs[og].resize(og_out_size);
-
     int cur_buf = wt_buf;
 
     for (int chunk = 0; chunk < num_chunks; chunk++) {
@@ -509,33 +520,44 @@ int run_layer(xrt::device& device, const LayerConfig& cfg,
         bufs.output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE, actual_output_bytes, 0);
         auto t_out_sync_end = std::chrono::high_resolution_clock::now();
 
-        auto t_out_cpy_start = std::chrono::high_resolution_clock::now();
-        if (ogs_in_chunk >= 2 && og_out_size >= 16384) {
-            int half = ogs_in_chunk / 2;
-            std::thread copy_t2([&, half, ogs_in_chunk, chunk_start_og]() {
-                for (int og = half; og < ogs_in_chunk; og++) {
-                    int global_og = chunk_start_og + og;
-                    std::memcpy(og_outputs[global_og].data(),
-                               bufs.output_ptr + og * output_stride_per_og,
-                               og_out_size);
-                }
-            });
-            for (int og = 0; og < half; og++) {
-                int global_og = chunk_start_og + og;
-                std::memcpy(og_outputs[global_og].data(),
+        auto t_copy_start = std::chrono::high_resolution_clock::now();
+        size_t og_out_size = num_pixels * 8;
+        int num_copy_threads = std::min(4, ogs_in_chunk);
+        if (num_copy_threads >= 2 && og_out_size >= 4096) {
+            std::thread threads[3];
+            for (int t = 1; t < num_copy_threads; t++) {
+                int og_start = t * ogs_in_chunk / num_copy_threads;
+                int og_end = (t + 1) * ogs_in_chunk / num_copy_threads;
+                threads[t-1] = std::thread([&bufs, og_out_size, output_stride_per_og, og_start, og_end]() {
+                    for (int og = og_start; og < og_end; og++) {
+                        std::memcpy(bufs.scratch.data() + og * og_out_size,
+                                   bufs.output_ptr + og * output_stride_per_og,
+                                   og_out_size);
+                    }
+                });
+            }
+            int og_end_main = ogs_in_chunk / num_copy_threads;
+            for (int og = 0; og < og_end_main; og++) {
+                std::memcpy(bufs.scratch.data() + og * og_out_size,
                            bufs.output_ptr + og * output_stride_per_og,
                            og_out_size);
             }
-            copy_t2.join();
+            for (int t = 1; t < num_copy_threads; t++) threads[t-1].join();
         } else {
-            for (int og_in_chunk = 0; og_in_chunk < ogs_in_chunk; og_in_chunk++) {
-                int global_og = chunk_start_og + og_in_chunk;
-                std::memcpy(og_outputs[global_og].data(),
-                           bufs.output_ptr + og_in_chunk * output_stride_per_og,
+            for (int og = 0; og < ogs_in_chunk; og++) {
+                std::memcpy(bufs.scratch.data() + og * og_out_size,
+                           bufs.output_ptr + og * output_stride_per_og,
                            og_out_size);
             }
         }
-        auto t_out_cpy_end = std::chrono::high_resolution_clock::now();
+        auto t_copy_end = std::chrono::high_resolution_clock::now();
+
+        auto t_interleave_start = std::chrono::high_resolution_clock::now();
+        int og_channel_offset = chunk_start_og * 8;
+        neon_interleave_from_scratch(bufs.scratch.data(), og_out_size,
+                                      layer_output.data(), cfg.cout,
+                                      num_pixels, ogs_in_chunk, og_channel_offset);
+        auto t_interleave_end = std::chrono::high_resolution_clock::now();
 
         auto t_join_start = std::chrono::high_resolution_clock::now();
         if (launched_async && wt_thread.joinable()) wt_thread.join();
@@ -548,7 +570,8 @@ int run_layer(xrt::device& device, const LayerConfig& cfg,
             std::cout << "  L" << layer_idx << " chunk " << chunk << ": " << ogs_in_chunk << " OGs buf=" << cur_buf
                       << "  fpga=" << (us(t_start, t_waited)/1000.0)
                       << "  out_sync=" << (us(t_out_sync_start, t_out_sync_end)/1000.0)
-                      << "  out_cpy=" << (us(t_out_cpy_start, t_out_cpy_end)/1000.0)
+                      << "  out_cpy=" << (us(t_copy_start, t_copy_end)/1000.0)
+                      << "  interleave=" << (us(t_interleave_start, t_interleave_end)/1000.0)
                       << "  join=" << (us(t_join_start, t_join_end)/1000.0)
                       << "  total=" << (us(chunk_start, chunk_end)/1000.0)
                       << "ms" << std::endl;
@@ -561,20 +584,6 @@ int run_layer(xrt::device& device, const LayerConfig& cfg,
         }
 
         cur_buf = next_buf;
-    }
-
-    auto interleave_start = std::chrono::high_resolution_clock::now();
-    if (cfg.cout <= 8) {
-        std::memcpy(layer_output.data(), og_outputs[0].data(), num_pixels * std::min(8, cfg.cout));
-    } else {
-        neon_batch_interleave(og_outputs, layer_output.data(), num_pixels, cfg.co_groups, cfg.cout);
-    }
-    auto interleave_end = std::chrono::high_resolution_clock::now();
-
-    if (g_profile || layer_idx <= 2) {
-        auto interleave_us = std::chrono::duration_cast<std::chrono::microseconds>(interleave_end - interleave_start).count();
-        std::cout << "  L" << layer_idx << " interleave: " << (interleave_us/1000.0) << "ms ("
-                  << cfg.co_groups << " OGs)" << std::endl;
     }
 
     return cur_buf;
@@ -641,6 +650,7 @@ int main(int argc, char* argv[]) {
         auto infer_start = std::chrono::high_resolution_clock::now();
 
         std::vector<uint8_t> layer_output;
+        layer_output.reserve(208 * 208 * 16);  // max output size (L0: 692KB)
         std::vector<uint8_t> layer4_conv_output;
         std::vector<uint8_t> layer7_output;
         std::vector<uint8_t> layer9_output;
