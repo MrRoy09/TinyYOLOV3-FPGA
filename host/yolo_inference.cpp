@@ -15,6 +15,8 @@
 #include <chrono>
 #include <cmath>
 #include <sstream>
+#include <thread>
+#include <atomic>
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -113,6 +115,7 @@ const int NUM_LAYERS = sizeof(LAYERS) / sizeof(LAYERS[0]);
 
 bool g_no_batch = false;
 bool g_optimal_batch = false;
+bool g_profile = false;
 
 const int OPTIMAL_BATCH[13] = {2, 4, 8, 16, 32, 64, 64, 32, 64, 32, 16, 32, 32};
 
@@ -128,7 +131,6 @@ std::vector<uint8_t> read_binary_file(const std::string& path) {
     return data;
 }
 
-// Normalize [0,255] to INT8 [0,127], pad channels 3→8, add 1-pixel zero border
 std::vector<uint8_t> load_and_preprocess_image(const std::string& path, int target_size = 416) {
     cv::Mat img = cv::imread(path, cv::IMREAD_COLOR);
     if (img.empty()) {
@@ -166,34 +168,18 @@ void pad_spatial(const std::vector<uint8_t>& input, int h, int w, int c,
                  std::vector<uint8_t>& output) {
     int padded_h = h + 2;
     int padded_w = w + 2;
-    output.resize(padded_h * padded_w * c, 0);
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            for (int ch = 0; ch < c; ch++) {
-                int src_idx = (y * w + x) * c + ch;
-                int dst_idx = ((y + 1) * padded_w + (x + 1)) * c + ch;
-                output[dst_idx] = input[src_idx];
-            }
-        }
-    }
+    output.assign(padded_h * padded_w * c, 0);
+    for (int y = 0; y < h; y++)
+        std::memcpy(&output[((y + 1) * padded_w + 1) * c], &input[y * w * c], w * c);
 }
 
-// Stride-1 maxpool: RTL skips row 0/col 0 of conv output.
-// Pad to (H+3)x(W+3) so conv produces (H+1)x(W+1), maxpool yields HxH.
 void pad_spatial_stride1(const std::vector<uint8_t>& input, int h, int w, int c,
                          std::vector<uint8_t>& output) {
     int padded_h = h + 3;
     int padded_w = w + 3;
-    output.resize(padded_h * padded_w * c, 0);
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            for (int ch = 0; ch < c; ch++) {
-                int src_idx = (y * w + x) * c + ch;
-                int dst_idx = ((y + 1) * padded_w + (x + 1)) * c + ch;
-                output[dst_idx] = input[src_idx];
-            }
-        }
-    }
+    output.assign(padded_h * padded_w * c, 0);
+    for (int y = 0; y < h; y++)
+        std::memcpy(&output[((y + 1) * padded_w + 1) * c], &input[y * w * c], w * c);
 }
 
 void cpu_maxpool_stride1(const uint8_t* input, uint8_t* output, int h, int w, int c) {
@@ -263,24 +249,33 @@ void cpu_concat_channels(const uint8_t* a, int ca, const uint8_t* b, int cb,
 }
 
 struct InferenceBuffers {
-    xrt::bo weight_bo;
-    xrt::bo bias_bo;
+    xrt::bo weight_bo[2];
+    xrt::bo bias_bo[2];
     xrt::bo pixel_bo;
     xrt::bo output_bo;
-    uint8_t* weight_ptr;
-    uint8_t* bias_ptr;
+    xrt::run run;
+    uint8_t* weight_ptr[2];
+    uint8_t* bias_ptr[2];
     uint8_t* pixel_ptr;
     uint8_t* output_ptr;
     size_t weight_buf_size;
     size_t bias_buf_size;
     size_t pixel_buf_size;
     size_t output_buf_size;
+    std::vector<uint8_t> output_staging;
     bool initialized = false;
+};
+
+struct ChunkWeights {
+    std::vector<uint8_t> weights;
+    std::vector<uint8_t> biases;
+    int num_ogs;
 };
 
 struct PreloadedWeights {
     std::vector<std::vector<std::vector<uint8_t>>> weights;  // [layer][og]
     std::vector<std::vector<std::vector<uint8_t>>> biases;   // [layer][og]
+    std::vector<std::vector<ChunkWeights>> chunks;
     bool loaded = false;
 };
 
@@ -310,6 +305,35 @@ void preload_all_weights(const std::string& weights_dir, PreloadedWeights& pw) {
     }
     pw.loaded = true;
     std::cout << " done (" << (total_bytes / 1024 / 1024) << " MB)" << std::endl;
+
+    pw.chunks.resize(NUM_LAYERS);
+    for (int layer = 0; layer < NUM_LAYERS; layer++) {
+        const LayerConfig& cfg = LAYERS[layer];
+        size_t wt_per_og = static_cast<size_t>(cfg.ci_groups) * 8 * 8 * 16;
+        int auto_max = 4096 / cfg.ci_groups;
+        int num_chunks = (cfg.co_groups + auto_max - 1) / auto_max;
+
+        pw.chunks[layer].resize(num_chunks);
+        for (int c = 0; c < num_chunks; c++) {
+            int chunk_start_og = c * auto_max;
+            int ogs = std::min(auto_max, cfg.co_groups - chunk_start_og);
+
+            auto& cw = pw.chunks[layer][c];
+            cw.num_ogs = ogs;
+            cw.weights.resize(ogs * wt_per_og);
+            cw.biases.resize(ogs * 32);
+
+            for (int og = 0; og < ogs; og++) {
+                int global_og = chunk_start_og + og;
+                std::memcpy(cw.weights.data() + og * wt_per_og,
+                           pw.weights[layer][global_og].data(),
+                           std::min(pw.weights[layer][global_og].size(), wt_per_og));
+                std::memcpy(cw.biases.data() + og * 32,
+                           pw.biases[layer][global_og].data(),
+                           std::min(pw.biases[layer][global_og].size(), static_cast<size_t>(32)));
+            }
+        }
+    }
 }
 
 void init_buffers(xrt::device& device, xrt::kernel& kernel, InferenceBuffers& bufs) {
@@ -318,23 +342,66 @@ void init_buffers(xrt::device& device, xrt::kernel& kernel, InferenceBuffers& bu
     bufs.pixel_buf_size = 2 * 1024 * 1024;    // 2MB
     bufs.output_buf_size = 2 * 1024 * 1024;   // 2MB
 
-    bufs.weight_bo = xrt::bo(device, bufs.weight_buf_size, kernel.group_id(19));
-    bufs.bias_bo = xrt::bo(device, bufs.bias_buf_size, kernel.group_id(20));
+    for (int b = 0; b < 2; b++) {
+        bufs.weight_bo[b] = xrt::bo(device, bufs.weight_buf_size, kernel.group_id(19));
+        bufs.bias_bo[b] = xrt::bo(device, bufs.bias_buf_size, kernel.group_id(20));
+        bufs.weight_ptr[b] = bufs.weight_bo[b].map<uint8_t*>();
+        bufs.bias_ptr[b] = bufs.bias_bo[b].map<uint8_t*>();
+    }
     bufs.pixel_bo = xrt::bo(device, bufs.pixel_buf_size, kernel.group_id(21));
     bufs.output_bo = xrt::bo(device, bufs.output_buf_size, kernel.group_id(22));
-
-    bufs.weight_ptr = bufs.weight_bo.map<uint8_t*>();
-    bufs.bias_ptr = bufs.bias_bo.map<uint8_t*>();
     bufs.pixel_ptr = bufs.pixel_bo.map<uint8_t*>();
     bufs.output_ptr = bufs.output_bo.map<uint8_t*>();
+
+    bufs.run = xrt::run(kernel);
+    bufs.run.set_arg(19, bufs.weight_bo[0]);
+    bufs.run.set_arg(20, bufs.bias_bo[0]);
+    bufs.run.set_arg(21, bufs.pixel_bo);
+    bufs.run.set_arg(22, bufs.output_bo);
+
+    bufs.output_staging.assign(bufs.output_buf_size, 0);
+
     bufs.initialized = true;
+    std::cout << "  Double-buffered weight/bias DMA allocated (2x "
+              << (bufs.weight_buf_size / 1024 / 1024) << "MB)" << std::endl;
 }
 
-void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
-               const std::vector<uint8_t>& pixels, std::vector<uint8_t>& layer_output,
-               int layer_idx, InferenceBuffers& bufs, PreloadedWeights& pw) {
+void prepare_weights_in_buf(InferenceBuffers& bufs, PreloadedWeights& pw,
+                            int layer_idx, int chunk_start_og, int ogs_in_chunk,
+                            int buf_idx) {
+    const LayerConfig& cfg = LAYERS[layer_idx];
+    size_t wt_per_og = static_cast<size_t>(cfg.ci_groups) * 8 * 8 * 16;
+    size_t actual_wt = static_cast<size_t>(ogs_in_chunk) * wt_per_og;
+    size_t actual_bias = static_cast<size_t>(ogs_in_chunk) * 32;
 
-    // URAM depth=4096, each OG needs ci_groups addresses
+    int auto_max = 4096 / cfg.ci_groups;
+    int chunk_idx = chunk_start_og / auto_max;
+
+    if (chunk_idx < static_cast<int>(pw.chunks[layer_idx].size())) {
+        const auto& cw = pw.chunks[layer_idx][chunk_idx];
+        std::memcpy(bufs.weight_ptr[buf_idx], cw.weights.data(), actual_wt);
+        std::memcpy(bufs.bias_ptr[buf_idx], cw.biases.data(), actual_bias);
+    } else {
+        for (int og = 0; og < ogs_in_chunk; og++) {
+            int global_og = chunk_start_og + og;
+            std::memcpy(bufs.weight_ptr[buf_idx] + og * wt_per_og,
+                       pw.weights[layer_idx][global_og].data(),
+                       std::min(pw.weights[layer_idx][global_og].size(), wt_per_og));
+            std::memcpy(bufs.bias_ptr[buf_idx] + og * 32,
+                       pw.biases[layer_idx][global_og].data(),
+                       std::min(pw.biases[layer_idx][global_og].size(), static_cast<size_t>(32)));
+        }
+    }
+
+    bufs.weight_bo[buf_idx].sync(XCL_BO_SYNC_BO_TO_DEVICE, actual_wt, 0);
+    bufs.bias_bo[buf_idx].sync(XCL_BO_SYNC_BO_TO_DEVICE, actual_bias, 0);
+}
+
+int run_layer(xrt::device& device, const LayerConfig& cfg,
+              const std::vector<uint8_t>& pixels, std::vector<uint8_t>& layer_output,
+              int layer_idx, InferenceBuffers& bufs, PreloadedWeights& pw,
+              int wt_buf, int next_layer_idx) {
+
     int auto_max = 4096 / cfg.ci_groups;
     int max_og_per_chunk;
     if (g_no_batch)
@@ -349,9 +416,9 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
     int actual_padded_w = (cfg.maxpool_stride == 1) ? (cfg.out_w + 3) : cfg.padded_w;
 
     size_t pixel_bytes = actual_padded_h * actual_padded_w * cfg.cin_pad;
-    size_t weight_bytes_per_og = cfg.ci_groups * 8 * 8 * 16;  // ci_groups * 8banks * 8urams * 16B
+    size_t weight_bytes_per_og = cfg.ci_groups * 8 * 8 * 16;
     size_t output_bytes_per_og = cfg.out_h * cfg.out_w * 8;
-    size_t output_stride_per_og = ((output_bytes_per_og + 4095) / 4096) * 4096;  // 4K aligned
+    size_t output_stride_per_og = ((output_bytes_per_og + 4095) / 4096) * 4096;
     int num_pixels = cfg.out_h * cfg.out_w;
 
     auto dma_start = std::chrono::high_resolution_clock::now();
@@ -359,16 +426,21 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
     bufs.pixel_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, pixel_bytes, 0);
     auto dma_end = std::chrono::high_resolution_clock::now();
 
-    if (layer_idx <= 2) {
+    if (g_profile || layer_idx <= 2) {
         auto dma_us = std::chrono::duration_cast<std::chrono::microseconds>(dma_end - dma_start).count();
         std::cout << "  L" << layer_idx << " pixel DMA: " << (dma_us/1000.0) << "ms ("
                   << (pixel_bytes/1024) << "KB), batching: " << num_chunks << " chunk(s), "
-                  << "max " << max_og_per_chunk << " OGs/chunk" << std::endl;
+                  << "max " << max_og_per_chunk << " OGs/chunk, wt_buf=" << wt_buf << std::endl;
     }
 
     layer_output.resize(cfg.out_h * cfg.out_w * cfg.cout);
 
     std::vector<std::vector<uint8_t>> og_outputs(cfg.co_groups);
+    size_t og_out_size = num_pixels * 8;
+    for (int og = 0; og < cfg.co_groups; og++)
+        og_outputs[og].resize(og_out_size);
+
+    int cur_buf = wt_buf;
 
     for (int chunk = 0; chunk < num_chunks; chunk++) {
         int chunk_start_og = chunk * max_og_per_chunk;
@@ -376,77 +448,119 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
 
         auto chunk_start = std::chrono::high_resolution_clock::now();
 
-        for (int og_in_chunk = 0; og_in_chunk < ogs_in_chunk; og_in_chunk++) {
-            int global_og = chunk_start_og + og_in_chunk;
+        bufs.run.set_arg(19, bufs.weight_bo[cur_buf]);
+        bufs.run.set_arg(20, bufs.bias_bo[cur_buf]);
 
-            const auto& weights = pw.weights[layer_idx][global_og];
-            const auto& biases = pw.biases[layer_idx][global_og];
-
-            std::memcpy(bufs.weight_ptr + og_in_chunk * weight_bytes_per_og,
-                       weights.data(),
-                       std::min(weights.size(), weight_bytes_per_og));
-
-            std::memcpy(bufs.bias_ptr + og_in_chunk * 32,
-                       biases.data(),
-                       std::min(biases.size(), static_cast<size_t>(32)));
-        }
-
-        size_t actual_weight_bytes = static_cast<size_t>(ogs_in_chunk) * weight_bytes_per_og;
-        size_t actual_bias_bytes = static_cast<size_t>(ogs_in_chunk) * 32;
-        bufs.weight_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, actual_weight_bytes, 0);
-        bufs.bias_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE, actual_bias_bytes, 0);
-
-        xrt::run run(kernel);
-        run.set_arg(0, bufs.weight_bo.address());
-        run.set_arg(1, bufs.bias_bo.address());
-        run.set_arg(2, bufs.pixel_bo.address());
-        run.set_arg(3, bufs.output_bo.address());
-        run.set_arg(4, static_cast<uint32_t>(weight_bytes_per_og));
-        run.set_arg(5, static_cast<uint32_t>(32));
-        run.set_arg(6, static_cast<uint32_t>(pixel_bytes));
-        run.set_arg(7, static_cast<uint32_t>(output_bytes_per_og));
-        run.set_arg(8, static_cast<uint32_t>(cfg.ci_groups));
-        run.set_arg(9, static_cast<uint32_t>(ogs_in_chunk));
-        run.set_arg(10, static_cast<uint32_t>(0));
-        run.set_arg(11, static_cast<uint32_t>(cfg.cin_pad));
-        run.set_arg(12, static_cast<uint32_t>(actual_padded_w));
+        bufs.run.set_arg(0, bufs.weight_bo[cur_buf].address());
+        bufs.run.set_arg(1, bufs.bias_bo[cur_buf].address());
+        bufs.run.set_arg(2, bufs.pixel_bo.address());
+        bufs.run.set_arg(3, bufs.output_bo.address());
+        bufs.run.set_arg(4, static_cast<uint32_t>(weight_bytes_per_og));
+        bufs.run.set_arg(5, static_cast<uint32_t>(32));
+        bufs.run.set_arg(6, static_cast<uint32_t>(pixel_bytes));
+        bufs.run.set_arg(7, static_cast<uint32_t>(output_bytes_per_og));
+        bufs.run.set_arg(8, static_cast<uint32_t>(cfg.ci_groups));
+        bufs.run.set_arg(9, static_cast<uint32_t>(ogs_in_chunk));
+        bufs.run.set_arg(10, static_cast<uint32_t>(0));
+        bufs.run.set_arg(11, static_cast<uint32_t>(cfg.cin_pad));
+        bufs.run.set_arg(12, static_cast<uint32_t>(actual_padded_w));
 
         bool enable_hw_maxpool = (cfg.maxpool_stride != 0);
-        run.set_arg(13, static_cast<uint32_t>(enable_hw_maxpool ? 1 : 0));
-        run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0));
-        run.set_arg(15, cfg.quant_m);
-        run.set_arg(16, cfg.quant_n);
-        run.set_arg(17, static_cast<uint32_t>(cfg.use_relu));
-        run.set_arg(18, static_cast<uint32_t>(cfg.kernel_1x1));
-        run.set_arg(19, bufs.weight_bo);
-        run.set_arg(20, bufs.bias_bo);
-        run.set_arg(21, bufs.pixel_bo);
-        run.set_arg(22, bufs.output_bo);
+        bufs.run.set_arg(13, static_cast<uint32_t>(enable_hw_maxpool ? 1 : 0));
+        bufs.run.set_arg(14, static_cast<uint32_t>(cfg.maxpool_stride == 2 ? 1 : 0));
+        bufs.run.set_arg(15, cfg.quant_m);
+        bufs.run.set_arg(16, cfg.quant_n);
+        bufs.run.set_arg(17, static_cast<uint32_t>(cfg.use_relu));
+        bufs.run.set_arg(18, static_cast<uint32_t>(cfg.kernel_1x1));
 
-        auto compute_start = std::chrono::high_resolution_clock::now();
-        run.start();
-        run.wait(std::chrono::seconds(300));
-        auto compute_end = std::chrono::high_resolution_clock::now();
+        auto t_start = std::chrono::high_resolution_clock::now();
+        bufs.run.start();
 
-        size_t actual_output_bytes = static_cast<size_t>(ogs_in_chunk) * output_stride_per_og;
-        bufs.output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE, actual_output_bytes, 0);
+        // Async: prepare next weights in alternate buffer
+        int next_buf = 1 - cur_buf;
+        std::thread wt_thread;
+        bool launched_async = false;
 
-        for (int og_in_chunk = 0; og_in_chunk < ogs_in_chunk; og_in_chunk++) {
-            int global_og = chunk_start_og + og_in_chunk;
-            const uint8_t* og_output_ptr = bufs.output_ptr + og_in_chunk * output_stride_per_og;
-
-            og_outputs[global_og].resize(num_pixels * 8);
-            std::memcpy(og_outputs[global_og].data(), og_output_ptr, num_pixels * 8);
+        if (chunk + 1 < num_chunks) {
+            int next_cs = (chunk + 1) * max_og_per_chunk;
+            int next_ogs = std::min(max_og_per_chunk, cfg.co_groups - next_cs);
+            wt_thread = std::thread([&bufs, &pw, layer_idx, next_cs, next_ogs, next_buf]() {
+                prepare_weights_in_buf(bufs, pw, layer_idx, next_cs, next_ogs, next_buf);
+            });
+            launched_async = true;
+        } else if (next_layer_idx >= 0) {
+            const LayerConfig& ncfg = LAYERS[next_layer_idx];
+            int nauto = 4096 / ncfg.ci_groups;
+            int nmax = g_no_batch ? 1 :
+                       (g_optimal_batch && next_layer_idx < 13 && OPTIMAL_BATCH[next_layer_idx] > 0)
+                           ? std::min(OPTIMAL_BATCH[next_layer_idx], nauto) : nauto;
+            int nogs = std::min(nmax, ncfg.co_groups);
+            wt_thread = std::thread([&bufs, &pw, next_layer_idx, nogs, next_buf]() {
+                prepare_weights_in_buf(bufs, pw, next_layer_idx, 0, nogs, next_buf);
+            });
+            launched_async = true;
         }
 
+        bufs.run.wait(std::chrono::seconds(300));
+        auto t_waited = std::chrono::high_resolution_clock::now();
+
+        size_t actual_output_bytes = static_cast<size_t>(ogs_in_chunk) * output_stride_per_og;
+        auto t_out_sync_start = std::chrono::high_resolution_clock::now();
+        bufs.output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE, actual_output_bytes, 0);
+        auto t_out_sync_end = std::chrono::high_resolution_clock::now();
+
+        auto t_out_cpy_start = std::chrono::high_resolution_clock::now();
+        if (ogs_in_chunk >= 2 && og_out_size >= 16384) {
+            int half = ogs_in_chunk / 2;
+            std::thread copy_t2([&, half, ogs_in_chunk, chunk_start_og]() {
+                for (int og = half; og < ogs_in_chunk; og++) {
+                    int global_og = chunk_start_og + og;
+                    std::memcpy(og_outputs[global_og].data(),
+                               bufs.output_ptr + og * output_stride_per_og,
+                               og_out_size);
+                }
+            });
+            for (int og = 0; og < half; og++) {
+                int global_og = chunk_start_og + og;
+                std::memcpy(og_outputs[global_og].data(),
+                           bufs.output_ptr + og * output_stride_per_og,
+                           og_out_size);
+            }
+            copy_t2.join();
+        } else {
+            for (int og_in_chunk = 0; og_in_chunk < ogs_in_chunk; og_in_chunk++) {
+                int global_og = chunk_start_og + og_in_chunk;
+                std::memcpy(og_outputs[global_og].data(),
+                           bufs.output_ptr + og_in_chunk * output_stride_per_og,
+                           og_out_size);
+            }
+        }
+        auto t_out_cpy_end = std::chrono::high_resolution_clock::now();
+
+        auto t_join_start = std::chrono::high_resolution_clock::now();
+        if (launched_async && wt_thread.joinable()) wt_thread.join();
+        auto t_join_end = std::chrono::high_resolution_clock::now();
+
         auto chunk_end = std::chrono::high_resolution_clock::now();
-        if (layer_idx <= 2 || layer_idx == 6) {
+
+        if (g_profile) {
+            auto us = [](auto a, auto b) { return std::chrono::duration_cast<std::chrono::microseconds>(b - a).count(); };
+            std::cout << "  L" << layer_idx << " chunk " << chunk << ": " << ogs_in_chunk << " OGs buf=" << cur_buf
+                      << "  fpga=" << (us(t_start, t_waited)/1000.0)
+                      << "  out_sync=" << (us(t_out_sync_start, t_out_sync_end)/1000.0)
+                      << "  out_cpy=" << (us(t_out_cpy_start, t_out_cpy_end)/1000.0)
+                      << "  join=" << (us(t_join_start, t_join_end)/1000.0)
+                      << "  total=" << (us(chunk_start, chunk_end)/1000.0)
+                      << "ms" << std::endl;
+        } else if (layer_idx <= 2 || layer_idx == 6) {
+            auto compute_us = std::chrono::duration_cast<std::chrono::microseconds>(t_waited - t_start).count();
             auto chunk_us = std::chrono::duration_cast<std::chrono::microseconds>(chunk_end - chunk_start).count();
-            auto compute_us = std::chrono::duration_cast<std::chrono::microseconds>(compute_end - compute_start).count();
             std::cout << "  L" << layer_idx << " chunk " << chunk << ": " << ogs_in_chunk
                       << " OGs, compute=" << (compute_us/1000.0) << "ms, total="
                       << (chunk_us/1000.0) << "ms" << std::endl;
         }
+
+        cur_buf = next_buf;
     }
 
     auto interleave_start = std::chrono::high_resolution_clock::now();
@@ -457,18 +571,21 @@ void run_layer(xrt::device& device, xrt::kernel& kernel, const LayerConfig& cfg,
     }
     auto interleave_end = std::chrono::high_resolution_clock::now();
 
-    if (layer_idx <= 2) {
+    if (g_profile || layer_idx <= 2) {
         auto interleave_us = std::chrono::duration_cast<std::chrono::microseconds>(interleave_end - interleave_start).count();
         std::cout << "  L" << layer_idx << " interleave: " << (interleave_us/1000.0) << "ms ("
                   << cfg.co_groups << " OGs)" << std::endl;
     }
+
+    return cur_buf;
 }
 
 int main(int argc, char* argv[]) {
     if (argc < 4) {
-        std::cerr << "Usage: " << argv[0] << " <xclbin_file> <weights_dir> <image_path> [--no-batch]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <xclbin_file> <weights_dir> <image_path> [options]" << std::endl;
         std::cerr << "  --no-batch      : disable multi-OG batching (1 OG per kernel call)" << std::endl;
         std::cerr << "  --optimal-batch : use per-layer optimal batch limits" << std::endl;
+        std::cerr << "  --profile       : show detailed per-layer timing breakdown" << std::endl;
         return 1;
     }
 
@@ -481,6 +598,8 @@ int main(int argc, char* argv[]) {
             g_no_batch = true;
         } else if (std::string(argv[i]) == "--optimal-batch") {
             g_optimal_batch = true;
+        } else if (std::string(argv[i]) == "--profile") {
+            g_profile = true;
         }
     }
 
@@ -490,6 +609,9 @@ int main(int argc, char* argv[]) {
     }
     if (g_optimal_batch) {
         std::cout << "  OPTIMAL-BATCH MODE: per-layer limits" << std::endl;
+    }
+    if (g_profile) {
+        std::cout << "  PROFILE MODE: detailed timing breakdown" << std::endl;
     }
     std::cout << "  XCLBIN: " << xclbin_file << std::endl;
     std::cout << "  Weights: " << weights_dir << std::endl;
@@ -526,17 +648,32 @@ int main(int argc, char* argv[]) {
 
         std::vector<long> layer_times(NUM_LAYERS);
 
+        {
+            const LayerConfig& cfg0 = LAYERS[0];
+            int auto0 = 4096 / cfg0.ci_groups;
+            int nmax0 = g_no_batch ? 1 :
+                        (g_optimal_batch && OPTIMAL_BATCH[0] > 0)
+                            ? std::min(OPTIMAL_BATCH[0], auto0) : auto0;
+            int nogs0 = std::min(nmax0, cfg0.co_groups);
+            prepare_weights_in_buf(bufs, pw, 0, 0, nogs0, 0);
+        }
+        int wt_buf = 0;
+
         for (int i = 0; i < NUM_LAYERS; i++) {
             auto layer_start = std::chrono::high_resolution_clock::now();
 
             const LayerConfig& cfg = LAYERS[i];
-            std::vector<uint8_t> pixels;
+
+            int next_layer_idx = (i + 1 < NUM_LAYERS) ? (i + 1) : -1;
+
+            const std::vector<uint8_t>* pixel_ref = nullptr;
+            std::vector<uint8_t> pixels_buf;
 
             if (i == 0) {
-                pixels = input_pixels;
+                pixel_ref = &input_pixels;
             }
             else if (i == 10) {
-                pixels = layer7_output;
+                pixel_ref = &layer7_output;
             }
             else if (i == 11) {
                 std::vector<uint8_t> upsampled(26 * 26 * 128);
@@ -545,36 +682,40 @@ int main(int argc, char* argv[]) {
                 cpu_concat_channels(upsampled.data(), 128,
                                    layer4_conv_output.data(), 256,
                                    concat_out.data(), 26, 26);
-                pad_spatial(concat_out, 26, 26, 384, pixels);
+                pad_spatial(concat_out, 26, 26, 384, pixels_buf);
+                pixel_ref = &pixels_buf;
             }
             else {
                 int prev_h = LAYERS[i-1].out_h;
                 int prev_w = LAYERS[i-1].out_w;
                 int prev_c = LAYERS[i-1].cout;
                 if (cfg.kernel_1x1) {
-                    pixels = layer_output;
+                    pixel_ref = &layer_output;
                 } else if (cfg.maxpool_stride == 1) {
-                    pad_spatial_stride1(layer_output, prev_h, prev_w, prev_c, pixels);
+                    pad_spatial_stride1(layer_output, prev_h, prev_w, prev_c, pixels_buf);
+                    pixel_ref = &pixels_buf;
                 } else {
-                    pad_spatial(layer_output, prev_h, prev_w, prev_c, pixels);
+                    pad_spatial(layer_output, prev_h, prev_w, prev_c, pixels_buf);
+                    pixel_ref = &pixels_buf;
                 }
             }
 
             if (i == 4) {
-                // Run without HW maxpool, save conv output for layer 11 concat, then CPU maxpool
                 LayerConfig cfg_no_mp = cfg;
                 cfg_no_mp.maxpool_stride = 0;
                 cfg_no_mp.out_h = 26;
                 cfg_no_mp.out_w = 26;
 
-                run_layer(device, kernel, cfg_no_mp, pixels, layer_output, i, bufs, pw);
+                wt_buf = run_layer(device, cfg_no_mp, *pixel_ref, layer_output, i, bufs, pw,
+                                   wt_buf, next_layer_idx);
                 layer4_conv_output = layer_output;
 
                 std::vector<uint8_t> pooled_output(13 * 13 * 256);
                 cpu_maxpool_stride2(layer_output.data(), pooled_output.data(), 26, 26, 256);
                 layer_output = pooled_output;
             } else {
-                run_layer(device, kernel, cfg, pixels, layer_output, i, bufs, pw);
+                wt_buf = run_layer(device, cfg, *pixel_ref, layer_output, i, bufs, pw,
+                                   wt_buf, next_layer_idx);
             }
             if (i == 7) layer7_output = layer_output;
             if (i == 9) layer9_output = layer_output;

@@ -13,7 +13,7 @@
 #   4. Compare with FPGA:  ./yolo_inference <xclbin> <weights> test.jpg
 
 CXX := g++
-CXXFLAGS := -std=c++17 -O2 -g -Wall
+CXXFLAGS := -std=c++17 -O3 -march=native -ffast-math -funroll-loops -g -Wall
 
 # XRT paths (only used for FPGA targets)
 # Detect XRT: prefer XILINX_XRT env var, fallback to system-wide install (Kria)
