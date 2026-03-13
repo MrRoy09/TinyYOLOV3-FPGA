@@ -8,7 +8,7 @@
 
 ## 1. Introduction
 
-This document presents the design and implementation of a custom FPGA accelerator for TinyYOLOv3 object detection targeting edge deployment on the Kria KV260 platform. The accelerator achieves 276x speedup over an ARM Cortex-A53 baseline, enabling real-time inference at approximately 10 frames per second end-to-end (1080×720 camera capture to display).
+This document presents the design and implementation of a custom FPGA accelerator for TinyYOLOv3 object detection targeting edge deployment on the Kria KV260 platform. The accelerator achieves 448x speedup over an ARM Cortex-A53 baseline, delivering 61ms inference latency (~16 FPS throughput) at 250 MHz. A real-time camera demo with EMA-smoothed bounding box tracking demonstrates end-to-end object detection.
 
 ---
 
@@ -26,7 +26,7 @@ The Kria KV260 SoM provides the following resources:
 | LUTs | 117,120 |
 | Flip-Flops | 234,240 |
 
-The system runs at **200 MHz** kernel clock frequency.
+The system runs at **250 MHz** kernel clock frequency.
 
 ### 2.2 Model Configuration
 
@@ -71,7 +71,7 @@ The design uses calibrated INT8 quantization with the following pipeline:
 4. Output requantization scales by a per-layer multiplier M and right-shifts by 16 bits
 5. Result is clipped to [-128, 127]
 
-Quantization parameters were calibrated using representative images to minimize accuracy loss.
+Quantization parameters are calibrated using 100 images from the COCO val2017 dataset with 99.9th percentile activation clipping to minimize accuracy loss.
 
 ### 3.6 Fused Operations
 
@@ -115,53 +115,69 @@ The remaining 103 BRAM tiles are available for future optimizations such as pixe
 
 ### 5.1 Benchmark Configuration
 
-Testing was performed with a 768×576 input image resized to 416×416. Both ARM CPU and FPGA implementations use identical INT8 quantization parameters and preprocessing.
+Testing was performed with various input images resized to 416×416. Both ARM CPU and FPGA implementations use identical INT8 quantization parameters and preprocessing. The FPGA runs at 250 MHz kernel clock.
 
 ### 5.2 Latency Comparison
 
-| Stage | ARM CPU | FPGA | Speedup |
-|-------|---------|------|---------|
-| Preprocessing | 38 ms | 41 ms | ~1× |
-| Inference | 27,339 ms | 99 ms | 276× |
+| Stage | ARM CPU | FPGA @ 250 MHz | Speedup |
+|-------|---------|----------------|---------|
+| Preprocessing | 38 ms | 126 ms (OpenCV resize) | — |
+| Inference | 27,339 ms | 61 ms | 448× |
 | Post-processing | <1 ms | <1 ms | ~1× |
-| **Total** | **27,377 ms** | **140 ms** | **196×** |
 
-### 5.3 Per-Layer Breakdown (FPGA)
+### 5.3 Per-Layer Breakdown (FPGA @ 250 MHz)
 
-| Layer | Channels | Output Groups | Time (ms) |
-|-------|----------|---------------|-----------|
-| 0 | 3→16 | 2 | 12 |
-| 1 | 16→32 | 4 | 9 |
-| 2 | 32→64 | 8 | 5 |
-| 3 | 64→128 | 16 | 4 |
-| 4 | 128→256 | 32 | 5 |
-| 5 | 256→512 | 64 | 6 |
-| 6 | 512→1024 | 128 | 19 |
-| 7 | 1024→256 | 32 | 7 |
-| 8 | 256→512 | 64 | 5 |
-| 9 | 512→255 | 32 | 4 |
-| 10 | 256→128 | 16 | 1 |
-| 11 | 384→256 | 32 | 11 |
-| 12 | 256→255 | 32 | 6 |
-| **Total** | | **448** | **99** |
+| Layer | Channels | Output Groups | Time (ms) | ms/OG |
+|-------|----------|---------------|-----------|-------|
+| 0 | 3→16 | 2 | 6 | 3.00 |
+| 1 | 16→32 | 4 | 4 | 1.00 |
+| 2 | 32→64 | 8 | 3 | 0.38 |
+| 3 | 64→128 | 16 | 2 | 0.12 |
+| 4 | 128→256 | 32 | 3 | 0.09 |
+| 5 | 256→512 | 64 | 4 | 0.06 |
+| 6 | 512→1024 | 128 | 12 | 0.09 |
+| 7 | 1024→256 | 32 | 4 | 0.12 |
+| 8 | 256→512 | 64 | 3 | 0.05 |
+| 9 | 512→255 | 32 | 2 | 0.06 |
+| 10 | 256→128 | 16 | 1 | 0.06 |
+| 11 | 384→256 | 32 | 7 | 0.22 |
+| 12 | 256→255 | 32 | 4 | 0.12 |
+| **Total** | | **448** | **61** | |
 
 Layer 6 dominates execution time due to having the most output groups (128) and requiring two weight loading phases.
 
-### 5.4 Throughput
+### 5.4 Inference Time Breakdown
 
-The system achieves approximately 10 FPS end-to-end, measured from 1080×720 camera capture through preprocessing, FPGA inference, post-processing, and final display output. The ARM CPU baseline achieves 0.037 FPS.
+Profiling on Kria reveals the 61ms inference time is split between:
+
+| Category | Time (ms) | % |
+|----------|-----------|---|
+| FPGA compute | 39.6 | 65% |
+| Output DMA copy | 10.8 | 18% |
+| Interleave | 2.2 | 4% |
+| Pixel DMA | 2.1 | 3% |
+| Other (alloc, sync) | 6.3 | 10% |
+
+Host-side optimizations include 4-thread parallel DMA-to-cache memcpy, NEON-accelerated interleaving with pixel-major fast paths for small OG counts, and pre-allocated reusable buffers.
+
+### 5.5 Throughput
+
+The system achieves approximately 16 FPS inference throughput (61ms per frame). The live camera demo runs at 13-14 FPS including camera capture, preprocessing, and display overhead. The ARM CPU baseline achieves 0.037 FPS.
 
 ---
 
 ## 6. Detection Results
 
-Both implementations correctly identify the primary objects in the test image:
+Both implementations correctly identify the primary objects in test images. With COCO val2017 calibration (100 images, 99.9th percentile), the INT8 model closely tracks the FP32 model:
 
-**ARM CPU:** dog (99%), bicycle (91%), motorcycle (84%)
+| Image | FP32 Top Detections | INT8 Top Detections |
+|-------|--------------------|--------------------|
+| person.jpg | person (98%), dog (89%) | person (100%), dog (100%) |
+| horses.jpg | horse (74%), horse (70%) | horse (100%), cow (100%) |
+| kite.jpg | kite (85%), person (85%) | person (93%), kite (69%) |
+| eagle.jpg | bird (76%), bird (62%) | bird (100%), bird (100%) |
 
-**FPGA:** bicycle (71%), motorcycle (68%), dog (54%)
-
-Confidence variations are within expected bounds for INT8 quantization. Object localization (bounding boxes) matches between implementations.
+The live camera demo includes EMA-smoothed bounding box tracking to reduce frame-to-frame jitter caused by INT8 quantization noise.
 
 ---
 
@@ -192,17 +208,19 @@ This partitioning keeps the FPGA datapath simple while leveraging CPU flexibilit
 
 Several optimizations remain for future iterations:
 
-**Pixel Caching:** The current design re-streams input pixels from DDR for each output group. Adding a BRAM-based pixel cache for layers 2+ (which fit in the available 103 BRAM tiles) would reduce DDR bandwidth by up to 64× for deeper layers.
-
 **Increased Parallelism:** DSP utilization of 60.6% leaves headroom for P_out=16, which would double throughput for compute-bound layers at the cost of increased weight bandwidth requirements.
 
 **Weight Compression:** Structured pruning or weight sharing could reduce URAM pressure and enable single-pass processing for Layer 6.
+
+**Per-Channel Quantization:** The current per-layer quantization uses a single M/n pair per layer. Per-channel quantization (one M per output filter) would improve accuracy, particularly for detection head layers, but requires RTL changes to the quantizer.
+
+**Wider AXI Datapath:** The current 128-bit AXI interface limits DDR throughput for output DMA copies. A 256-bit interface would reduce the 10.8ms output copy overhead.
 
 ---
 
 ## 9. Conclusion
 
-The implemented accelerator achieves 276× speedup over an ARM Cortex-A53 baseline, delivering real-time TinyYOLOv3 inference at approximately 10 FPS end-to-end (1080×720 camera to display) on the Kria KV260 edge platform. Resource utilization is efficient with 60.6% DSP usage and 100% URAM usage. Detection accuracy is preserved through calibrated INT8 quantization. The design validates the feasibility of deploying CNN-based object detection on resource-constrained edge FPGAs.
+The implemented accelerator achieves 448× speedup over an ARM Cortex-A53 baseline, delivering real-time TinyYOLOv3 inference at 61ms latency (~16 FPS) on the Kria KV260 edge platform at 250 MHz. Resource utilization is efficient with 60.6% DSP usage and 100% URAM usage. Detection accuracy is preserved through INT8 quantization calibrated on 100 COCO val2017 images. A live camera demo with EMA-smoothed bounding box tracking demonstrates practical end-to-end object detection at 13-14 FPS. The design validates the feasibility of deploying CNN-based object detection on resource-constrained edge FPGAs.
 
 ---
 

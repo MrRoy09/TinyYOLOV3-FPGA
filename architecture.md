@@ -10,7 +10,7 @@
 | LUTs | 117,120 | 53,314 | 45.5% |
 | FFs | 234,240 | 64,807 | 27.7% |
 
-Clock: 200 MHz
+Clock: 250 MHz
 
 ---
 
@@ -126,7 +126,7 @@ INT32 accumulator
     → Add INT32 bias
     → LeakyReLU (if negative: right-shift by 3, approximating ×0.125)
     → Multiply by M (16-bit)
-    → Right-shift by N (typically 8)
+    → Right-shift by N (typically 16)
     → Clip to [-128, 127]
     → INT8 output
 ```
