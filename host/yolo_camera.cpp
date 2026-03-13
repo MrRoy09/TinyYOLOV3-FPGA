@@ -821,12 +821,11 @@ void draw_detections(cv::Mat& frame, const std::vector<BBox>& detections,
 
 void draw_stats(cv::Mat& frame, float preprocess_ms, float inference_ms,
                 float postprocess_ms, int num_detections) {
-    float total_ms = preprocess_ms + inference_ms + postprocess_ms;
-    float fps = 1000.0f / total_ms;
+    float fps = 1000.0f / inference_ms;
 
     std::stringstream ss;
     ss << std::fixed << std::setprecision(1);
-    ss << "FPS: " << fps << " | Infer: " << inference_ms << "ms";
+    ss << "FPS: " << fps << " (" << inference_ms << "ms)";
     ss << " | Det: " << num_detections;
 
     cv::putText(frame, ss.str(), cv::Point(10, 25),
@@ -838,12 +837,92 @@ void draw_stats(cv::Mat& frame, float preprocess_ms, float inference_ms,
     }
 }
 
+// Simple detection tracker with EMA smoothing
+struct TrackedBox {
+    BBox box;
+    int age;         // frames since last matched
+    int hits;        // total frames matched
+};
+
+class BoxTracker {
+    std::vector<TrackedBox> tracks;
+    static constexpr float EMA_ALPHA = 0.4f;  // smoothing factor (lower = smoother)
+    static constexpr int MAX_AGE = 3;          // drop track after N unmatched frames
+    static constexpr float MATCH_IOU = 0.3f;   // min IoU to match
+
+public:
+    std::vector<BBox> update(const std::vector<BBox>& detections) {
+        // Mark all tracks as unmatched
+        std::vector<bool> track_matched(tracks.size(), false);
+        std::vector<bool> det_matched(detections.size(), false);
+
+        // Match detections to existing tracks (greedy, by IoU)
+        for (size_t d = 0; d < detections.size(); d++) {
+            float best_iou_val = MATCH_IOU;
+            int best_t = -1;
+            for (size_t t = 0; t < tracks.size(); t++) {
+                if (track_matched[t]) continue;
+                if (tracks[t].box.class_id != detections[d].class_id) continue;
+                float v = iou(tracks[t].box, detections[d]);
+                if (v > best_iou_val) {
+                    best_iou_val = v;
+                    best_t = static_cast<int>(t);
+                }
+            }
+            if (best_t >= 0) {
+                // EMA smooth the box position
+                auto& tb = tracks[best_t].box;
+                const auto& db = detections[d];
+                tb.x = EMA_ALPHA * db.x + (1 - EMA_ALPHA) * tb.x;
+                tb.y = EMA_ALPHA * db.y + (1 - EMA_ALPHA) * tb.y;
+                tb.w = EMA_ALPHA * db.w + (1 - EMA_ALPHA) * tb.w;
+                tb.h = EMA_ALPHA * db.h + (1 - EMA_ALPHA) * tb.h;
+                tb.confidence = EMA_ALPHA * db.confidence + (1 - EMA_ALPHA) * tb.confidence;
+                tracks[best_t].age = 0;
+                tracks[best_t].hits++;
+                track_matched[best_t] = true;
+                det_matched[d] = true;
+            }
+        }
+
+        // Add unmatched detections as new tracks
+        for (size_t d = 0; d < detections.size(); d++) {
+            if (!det_matched[d]) {
+                tracks.push_back({detections[d], 0, 1});
+            }
+        }
+
+        // Age unmatched tracks and remove stale ones
+        for (size_t t = 0; t < tracks.size(); ) {
+            if (t < track_matched.size() && !track_matched[t]) {
+                tracks[t].age++;
+            }
+            if (tracks[t].age > MAX_AGE) {
+                tracks.erase(tracks.begin() + t);
+                if (t < track_matched.size()) track_matched.erase(track_matched.begin() + t);
+            } else {
+                t++;
+            }
+        }
+
+        // Return tracks that have been seen at least 2 frames
+        std::vector<BBox> result;
+        for (const auto& t : tracks) {
+            if (t.hits >= 2 && t.age == 0) {
+                result.push_back(t.box);
+            }
+        }
+        return result;
+    }
+};
+
 void display_thread_func() {
     if (!g_config.headless) {
         cv::namedWindow("TinyYOLOv3 Live", cv::WINDOW_AUTOSIZE);
     }
 
     int save_counter = 0;
+    BoxTracker tracker;
 
     while (g_running) {
         InferenceResult result;
@@ -851,12 +930,15 @@ void display_thread_func() {
             continue;
         }
 
+        // Smooth detections across frames
+        std::vector<BBox> smoothed = tracker.update(result.detections);
+
         float scale_x = static_cast<float>(result.image.cols) / 416.0f;
         float scale_y = static_cast<float>(result.image.rows) / 416.0f;
 
-        draw_detections(result.image, result.detections, scale_x, scale_y);
+        draw_detections(result.image, smoothed, scale_x, scale_y);
         draw_stats(result.image, result.preprocess_time_ms, result.inference_time_ms,
-                  result.postprocess_time_ms, result.detections.size());
+                  result.postprocess_time_ms, smoothed.size());
 
         if (g_config.headless) {
             if (!result.detections.empty()) {

@@ -39,9 +39,9 @@ struct BBox {
 const float ANCHORS_13x13[][2] = {{81, 82}, {135, 169}, {344, 319}};
 const float ANCHORS_26x26[][2] = {{10, 14}, {23, 27}, {37, 58}};
 
-// Dequantization scales from hardware_sim.py calibration
-const float DEQUANT_SCALE_13x13 = 5.3159403800964355f;
-const float DEQUANT_SCALE_26x26 = 5.409017562866211f;
+// Dequantization scales from hardware_sim.py calibration (100-image COCO val2017, p99.9)
+const float DEQUANT_SCALE_13x13 = 4.0126f;   // o_scale for layer 9 (NPZ 15)
+const float DEQUANT_SCALE_26x26 = 3.7869f;   // o_scale for layer 12 (NPZ 22)
 
 inline float sigmoid(float x) {
     return 1.0f / (1.0f + std::exp(-x));

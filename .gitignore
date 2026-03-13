@@ -52,8 +52,14 @@ fixes.md
 detection_result.jpg
 detection_output.jpg
 
+scripts/stimulus_full/
+scripts/stimulus_chain/
 scripts/stimulus_batch_test/
 scripts/stimulus_l5/
+
+sim/hardware-ai/val2017/
+sim/hardware-ai/val2017.zip
+sim/hardware-ai/coco_val2017/
 scripts/stimulus_bulk_debug/
 scripts/gen_bulk_debug_stimulus.py
 
