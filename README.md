@@ -4,9 +4,9 @@ A high-performance FPGA accelerator for real-time TinyYOLOv3 object detection on
 
 ## Results
 
-- **10.5x speedup** over optimized ARM Cortex-A53 (im2col + NEON + 4-thread)
+- **448x speedup** over naive ARM Cortex-A53 and **10.5x** over optimized ARM (im2col + NEON + 4-thread)
 - **61ms** FPGA inference vs 640ms optimized ARM (both using identical INT8 quantization)
-- **~16 FPS** inference throughput on an edge platform
+- **~16 FPS** inference throughput on the Kria KV260
 - **INT8 quantization** calibrated on 100 COCO val2017 images
 - **Real-time camera demo** with EMA-smoothed bounding box tracking
 
