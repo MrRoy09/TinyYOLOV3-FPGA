@@ -1,4 +1,4 @@
-# Bharat-ARM: TinyYOLOv3 FPGA Accelerator
+# TinyYOLOv3 FPGA Accelerator
 
 A high-performance FPGA accelerator for real-time TinyYOLOv3 object detection on the Xilinx Kria KV260 edge platform.
 
