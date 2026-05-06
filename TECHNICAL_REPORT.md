@@ -1,6 +1,5 @@
 # TinyYOLOv3 FPGA Accelerator - Technical Report
 
-**Project:** Bharat-ARM
 **Platform:** Xilinx Kria KV260 (Zynq UltraScale+ MPSoC)
 **Date:** February 2026
 
